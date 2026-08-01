@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """Train PHAT-JeT on ScanObjectNN PB_T50_RS (plan section 3.4).
 
-One fixed recipe for every run in the pre-registered grid: AdamW, cosine decay
-with warmup, label smoothing 0.2, 250 epochs, batch 32.
+The historical recipe remains the default; ``--recipe pointnext`` selects the
+PointNeXt training bundle, including raw y-height appending and no warmup.
 
 Checkpoint selection uses a held-out split of the training set. The test set is
 evaluated each epoch for the reported curves but never drives any decision.
@@ -38,27 +38,54 @@ from data.scanobjectnn import (  # noqa: E402
 from models.phat_sonn import build_phat_sonn_classifier, count_flops  # noqa: E402
 
 
-def parse_args():
+RECIPE_DEFAULTS = {
+    "current": dict(epochs=250, batch_size=32, lr=1e-3, weight_decay=0.05,
+                    warmup_epochs=10, label_smoothing=0.2,
+                    height_append=False),
+    "pointnext": dict(epochs=250, batch_size=32, lr=1e-3, weight_decay=0.05,
+                      warmup_epochs=0, label_smoothing=0.2,
+                      height_append=True),
+}
+
+
+def parse_args(argv=None):
     p = argparse.ArgumentParser()
     p.add_argument("--data_dir", required=True)
     p.add_argument("--out", required=True)
     p.add_argument("--config", choices=["XS", "S", "M", "L"], default="S")
     p.add_argument("--delta", type=float, default=0.25, help="GMP voxel edge length")
     p.add_argument("--gmp", choices=["on", "off"], default="on")
+    p.add_argument(
+        "--gmp_variant",
+        choices=["dense", "sparse", "sparse_mean", "sparse_trilinear"],
+        default="dense",
+        help="GMP implementation. 'dense' is the legacy default that all "
+             "completed runs used; the sparse variants cost roughly constant "
+             "time in grid resolution and make very fine delta affordable.",
+    )
     p.add_argument("--ordering", choices=["morton", "random"], default="morton")
     p.add_argument(
         "--patch_size", type=int, default=None,
         help="override the config's patch size (Phase D)",
     )
     p.add_argument("--seed", type=int, default=0)
-    p.add_argument("--epochs", type=int, default=250)
-    p.add_argument("--batch_size", type=int, default=32)
-    p.add_argument("--lr", type=float, default=1e-3)
-    p.add_argument("--weight_decay", type=float, default=0.05)
-    p.add_argument("--warmup_epochs", type=int, default=10)
-    p.add_argument("--label_smoothing", type=float, default=0.2)
+    p.add_argument("--recipe", choices=RECIPE_DEFAULTS, default="current")
+    p.add_argument("--epochs", type=int, default=None)
+    p.add_argument("--batch_size", type=int, default=None)
+    p.add_argument("--lr", type=float, default=None)
+    p.add_argument("--weight_decay", type=float, default=None)
+    p.add_argument("--warmup_epochs", type=int, default=None)
+    p.add_argument("--label_smoothing", type=float, default=None)
+    p.add_argument(
+        "--height_append", action=argparse.BooleanOptionalAction, default=None,
+        help="append raw y height as a fourth per-point input feature",
+    )
     p.add_argument("--val_fraction", type=float, default=0.1)
-    return p.parse_args()
+    args = p.parse_args(argv)
+    for name, value in RECIPE_DEFAULTS[args.recipe].items():
+        if getattr(args, name) is None:
+            setattr(args, name, value)
+    return args
 
 
 def set_seeds(seed):
@@ -91,7 +118,8 @@ def make_train_epoch(points, labels, args, fixed_perm, epoch):
     rng = np.random.default_rng(args.seed * 100_000 + epoch)
     order = rng.permutation(points.shape[0])
     batch = np.stack(
-        [prepare_train_sample(points[i], rng, args.ordering, fixed_perm)
+        [prepare_train_sample(points[i], rng, args.ordering, fixed_perm,
+                              height_append=args.height_append)
          for i in order]
     )
     one_hot = np.eye(NUM_CLASSES, dtype=np.float32)[labels[order]]
@@ -103,7 +131,8 @@ def make_eval_arrays(points, labels, args, fixed_perm):
     subsample = eval_subsample_indices(points.shape[0], points.shape[1])
     prepared = np.stack(
         [
-            prepare_eval_sample(points[i], subsample[i], args.ordering, fixed_perm)
+            prepare_eval_sample(points[i], subsample[i], args.ordering, fixed_perm,
+                                height_append=args.height_append)
             for i in range(points.shape[0])
         ]
     )
@@ -175,6 +204,51 @@ def preserve_previous_metrics(out_dir):
     archived = os.path.join(out_dir, f"metrics.attempt{attempt}.json")
     os.replace(metrics_path, archived)
     return archived, epochs_completed
+
+
+def build_classifier(args):
+    """Build the stock 3D model, or expose height only to its input embedding.
+
+    Existing PHAT blocks receive xyz coordinates exactly as before, so GMP
+    voxel indices remain three-dimensional.  The only widened layer is the
+    intended per-point input embedding.
+    """
+    base = build_phat_sonn_classifier(
+        config=args.config,
+        num_points=NUM_POINTS,
+        num_classes=NUM_CLASSES,
+        grid_size=args.delta,
+        use_gmp=(args.gmp == "on"),
+        gmp_variant=args.gmp_variant,
+        patch_size=args.patch_size,
+    )
+    if not args.height_append:
+        return base
+
+    features = tf.keras.layers.Input((NUM_POINTS, 4), name="points")
+    coords = tf.keras.layers.Lambda(
+        lambda tensor: tensor[..., :3], name="xyz_coordinates"
+    )(features)
+    embedding = base.get_layer("input_embedding")
+    x = tf.keras.layers.Dense(embedding.units, name="input_embedding")(features)
+    for layer in base.layers:
+        if layer.name.startswith("phat_block3d_"):
+            x, coords = layer([x, coords])
+    x = base.get_layer("global_mean_pool")(x)
+    x = base.get_layer("head_hidden")(x)
+    if any(layer.name == "dropout" for layer in base.layers):
+        x = base.get_layer("dropout")(x)
+    logits = base.get_layer("logits")(x)
+    return tf.keras.Model(features, logits, name=base.name)
+
+
+def model_for_flops(model, height_append):
+    """Give the legacy three-channel FLOPs helper a shape-compatible graph."""
+    if not height_append:
+        return model
+    xyz = tf.keras.layers.Input((NUM_POINTS, 3), name="flops_xyz")
+    inputs = tf.keras.layers.Concatenate(axis=-1)([xyz, xyz[..., 1:2]])
+    return tf.keras.Model(xyz, model(inputs))
 
 
 class MetricsLog:
@@ -271,14 +345,7 @@ def main():
     )
     test = make_eval_arrays(test_points, test_labels, args, fixed_perm)
 
-    model = build_phat_sonn_classifier(
-        config=args.config,
-        num_points=NUM_POINTS,
-        num_classes=NUM_CLASSES,
-        grid_size=args.delta,
-        use_gmp=(args.gmp == "on"),
-        patch_size=args.patch_size,
-    )
+    model = build_classifier(args)
 
     steps_per_epoch = int(np.ceil(len(train_idx) / args.batch_size))
     schedule = tf.keras.optimizers.schedules.CosineDecay(
@@ -330,7 +397,7 @@ def main():
     # Profiled last: it builds a separate graph and is version-sensitive, so a
     # failure here must not cost a completed training run.
     try:
-        flops = int(count_flops(model, NUM_POINTS))
+        flops = int(count_flops(model_for_flops(model, args.height_append), NUM_POINTS))
     except Exception as exc:
         logging.warning("FLOPs profiling failed: %s", exc)
         flops = None

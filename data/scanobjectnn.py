@@ -1,8 +1,8 @@
 """ScanObjectNN PB_T50_RS pipeline (plan section 3.1 / 3.3).
 
-Protocol follows the PointNeXt/PointMLP convention: 1024 points, coordinates
-only, unit-sphere normalization, scale+rotation augmentation at train time,
-no voting at test time.
+Protocol follows the PointNeXt/PointMLP convention: 1024 points, unit-sphere
+normalized coordinates, scale+rotation augmentation at train time, and no
+voting at test time.  PointNeXt-style raw height is optionally appended.
 
 All array transforms here are pure numpy so they can be unit-tested without the
 dataset, which is license-gated and must be staged on the PVC by hand.
@@ -103,18 +103,29 @@ def apply_order(points, ordering, fixed_perm=None):
 # Sample-level composition
 # --------------------------------------------------------------------------
 def prepare_train_sample(raw_points, rng, ordering, fixed_perm=None,
-                         num_points=NUM_POINTS):
+                         num_points=NUM_POINTS, height_append=False):
     """Resample -> normalize -> augment -> order. raw_points: [2048, 3]."""
     idx = rng.choice(raw_points.shape[0], size=num_points, replace=False)
-    points = normalize_unit_sphere(raw_points[idx].astype(np.float32))
+    selected = raw_points[idx].astype(np.float32)
+    # PointNeXt height is the raw gravity-axis measurement.  Capture it before
+    # centering/unit-sphere normalization removes absolute height and scale.
+    height = selected[:, 1:2]
+    points = normalize_unit_sphere(selected)
     points = random_rotation_y(random_scale(points, rng), rng)
+    if height_append:
+        points = np.concatenate([points, height], axis=-1)
     # Ordering must come after augmentation: rotation changes Morton codes.
     return apply_order(points, ordering, fixed_perm).astype(np.float32)
 
 
-def prepare_eval_sample(raw_points, subsample_idx, ordering, fixed_perm=None):
+def prepare_eval_sample(raw_points, subsample_idx, ordering, fixed_perm=None,
+                        height_append=False):
     """Fixed subsample -> normalize -> order. No augmentation, no voting."""
-    points = normalize_unit_sphere(raw_points[subsample_idx].astype(np.float32))
+    selected = raw_points[subsample_idx].astype(np.float32)
+    height = selected[:, 1:2]
+    points = normalize_unit_sphere(selected)
+    if height_append:
+        points = np.concatenate([points, height], axis=-1)
     return apply_order(points, ordering, fixed_perm).astype(np.float32)
 
 

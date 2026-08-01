@@ -160,8 +160,11 @@ class GeometricMessagePassing3D(layers.Layer):
     def build(self, input_shape):
         # Sparse variants use Conv3D as an exactly compatible weight container.
         # Building it here makes `kernel` available without allocating a grid.
-        if not self.conv3d.built:
-            self.conv3d.build((None, None, None, None, self.channels))
+        # The dense/default variant deliberately retains Conv3D's original lazy
+        # build path (including legacy-Keras variable names and RNG ordering).
+        if self.variant != "dense" and not self.conv3d.built:
+            with tf.name_scope(self.conv3d.name):
+                self.conv3d.build((None, None, None, None, self.channels))
         super().build(input_shape)
 
     def _sparse_convolution(self, keys, values, coords4, grid_dims):

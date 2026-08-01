@@ -125,6 +125,40 @@ def test_train_sample_shape_and_variation():
     assert not np.allclose(first, second), "augmentation should vary per epoch"
 
 
+def test_height_append_is_raw_y_before_normalization():
+    raw = _raw()
+    expected_rng = np.random.default_rng(23)
+    idx = expected_rng.choice(raw.shape[0], size=NUM_POINTS, replace=False)
+    actual = prepare_train_sample(
+        raw, np.random.default_rng(23), "random",
+        fixed_perm=np.arange(NUM_POINTS), height_append=True,
+    )
+    assert actual.shape == (NUM_POINTS, 4)
+    np.testing.assert_array_equal(actual[:, 3], raw[idx, 1])
+
+
+def test_appended_height_is_invariant_to_y_rotation():
+    raw = _raw(num=NUM_POINTS)
+    features = np.concatenate(
+        [normalize_unit_sphere(raw), raw[:, 1:2]], axis=-1
+    )
+    rotated = np.concatenate(
+        [random_rotation_y(features[:, :3], np.random.default_rng(24)),
+         features[:, 3:4]],
+        axis=-1,
+    )
+    np.testing.assert_array_equal(rotated[:, 3], features[:, 3])
+
+
+def test_eval_height_append_is_raw_y_with_matching_order():
+    raw = _raw()
+    idx = eval_subsample_indices(1, raw.shape[0])[0]
+    actual = prepare_eval_sample(
+        raw, idx, "random", fixed_perm=np.arange(NUM_POINTS), height_append=True
+    )
+    np.testing.assert_array_equal(actual[:, 3], raw[idx, 1])
+
+
 def test_train_sample_preserves_y_coordinates_except_isotropic_scale():
     """Regression: augmentation rotates around y, never z."""
     raw = _raw()
