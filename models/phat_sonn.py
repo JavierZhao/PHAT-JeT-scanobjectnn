@@ -37,6 +37,7 @@ class PHATBlock3D(layers.Layer):
         patch_size,
         grid_size=0.25,
         gmp_kernel=3,
+        gmp_variant="dense",
         use_gmp=True,
         dropout=0.0,
         ffn_activation="gelu",
@@ -51,7 +52,10 @@ class PHATBlock3D(layers.Layer):
         self.use_gmp = use_gmp
         if use_gmp:
             self.gmp = GeometricMessagePassing3D(
-                d_model, kernel_size=gmp_kernel, grid_size=grid_size
+                d_model,
+                kernel_size=gmp_kernel,
+                grid_size=grid_size,
+                variant=gmp_variant,
             )
 
         self.norm1 = layers.LayerNormalization(epsilon=1e-6)
@@ -107,6 +111,7 @@ def build_phat_sonn_classifier(
     num_classes=15,
     grid_size=0.25,
     use_gmp=True,
+    gmp_variant="dense",
     patch_size=None,
     dropout=0.0,
     ffn_activation="gelu",
@@ -119,6 +124,8 @@ def build_phat_sonn_classifier(
         use_gmp: False removes the explicit GMP positional prior. Note that
             Morton ordering, if used, still groups spatially near points into
             patches -- this ablation removes the GMP module, not all geometry.
+        gmp_variant: ``dense`` (legacy default), ``sparse``, ``sparse_mean``,
+            or ``sparse_trilinear``.
         patch_size: override the config's patch size (Phase D).
 
     Returns:
@@ -145,6 +152,7 @@ def build_phat_sonn_classifier(
             patch_size=patch,
             grid_size=grid_size,
             use_gmp=use_gmp,
+            gmp_variant=gmp_variant,
             dropout=dropout,
             ffn_activation=ffn_activation,
             name=f"phat_block3d_{i}",

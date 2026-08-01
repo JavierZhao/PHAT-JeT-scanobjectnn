@@ -118,3 +118,14 @@ def test_gradients_reach_the_gmp_conv():
     ]
     assert gmp_grads, "no Conv3D variables found in the model"
     assert any(np.abs(g.numpy()).sum() > 0 for g in gmp_grads)
+
+
+@pytest.mark.parametrize(
+    "gmp_variant", ["dense", "sparse", "sparse_mean", "sparse_trilinear"]
+)
+def test_gmp_variant_is_threaded_through_classifier(gmp_variant):
+    model = build_phat_sonn_classifier(
+        config="XS", num_points=64, gmp_variant=gmp_variant, grid_size=0.125
+    )
+    out = model(tf.zeros([2, 64, 3]), training=False)
+    assert out.shape == (2, NUM_CLASSES)

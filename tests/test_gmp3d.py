@@ -12,6 +12,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from models.gmp3d import GeometricMessagePassing3D, quantize, scatter_to_grid
 
 
+SPARSE_VARIANTS = ("sparse", "sparse_mean", "sparse_trilinear")
+
+
 def _cloud(batch=2, num_points=64, channels=8, seed=0, scales=(1.0, 0.6)):
     """Random unit-sphere-ish clouds with deliberately unequal per-cloud extents."""
     rng = np.random.default_rng(seed)
@@ -117,3 +120,66 @@ def test_grid_side_stays_within_memory_budget():
         assert idx.max() + 1 <= expected_max, (
             f"delta={grid_size} gives grid side {idx.max() + 1} > {expected_max}"
         )
+
+
+@pytest.mark.parametrize("variant", SPARSE_VARIANTS)
+def test_sparse_variants_preserve_shape_and_run_under_tf_function(variant):
+    coords, feats = _cloud(num_points=24, channels=4, seed=10)
+    layer = GeometricMessagePassing3D(
+        channels=4, kernel_size=3, grid_size=0.125, variant=variant
+    )
+
+    @tf.function
+    def forward(f, c):
+        return layer(f, c)
+
+    eager = layer(feats, coords)
+    traced = forward(feats, coords)
+    assert eager.shape == feats.shape
+    np.testing.assert_allclose(traced.numpy(), eager.numpy(), rtol=2e-5, atol=2e-6)
+
+
+@pytest.mark.parametrize("variant", SPARSE_VARIANTS)
+def test_sparse_variants_are_permutation_equivariant(variant):
+    coords, feats = _cloud(num_points=32, channels=4, seed=11)
+    layer = GeometricMessagePassing3D(
+        channels=4, kernel_size=3, grid_size=0.2, variant=variant
+    )
+    out = layer(feats, coords).numpy()
+    perm = np.random.default_rng(12).permutation(coords.shape[1])
+    permuted = layer(
+        tf.gather(feats, perm, axis=1), tf.gather(coords, perm, axis=1)
+    ).numpy()
+    np.testing.assert_allclose(permuted, out[:, perm], rtol=2e-4, atol=2e-5)
+
+
+@pytest.mark.parametrize("variant", SPARSE_VARIANTS)
+def test_sparse_variant_gradients_reach_input_and_kernel(variant):
+    coords, feats = _cloud(num_points=24, channels=4, seed=13)
+    layer = GeometricMessagePassing3D(
+        channels=4, kernel_size=3, grid_size=0.25, variant=variant
+    )
+    with tf.GradientTape() as tape:
+        tape.watch(feats)
+        loss = tf.reduce_sum(tf.square(layer(feats, coords)))
+    grad_input, grad_kernel = tape.gradient(loss, [feats, layer.conv3d.kernel])
+    assert grad_input is not None and np.abs(grad_input.numpy()).sum() > 0
+    assert grad_kernel is not None and np.abs(grad_kernel.numpy()).sum() > 0
+
+
+def test_sparse_is_numerically_equivalent_to_dense_with_shared_weights():
+    """Sparse lookup computes the same grouped Conv3D at every point voxel."""
+    coords, feats = _cloud(batch=2, num_points=40, channels=4, seed=14)
+    dense = GeometricMessagePassing3D(
+        channels=4, kernel_size=3, grid_size=0.2, variant="dense"
+    )
+    sparse = GeometricMessagePassing3D(
+        channels=4, kernel_size=3, grid_size=0.2, variant="sparse"
+    )
+    dense_out = dense(feats, coords)
+    sparse(feats, coords)  # build all weights before copying
+    sparse.set_weights(dense.get_weights())
+    sparse_out = sparse(feats, coords)
+    np.testing.assert_allclose(
+        sparse_out.numpy(), dense_out.numpy(), rtol=2e-5, atol=2e-6
+    )
