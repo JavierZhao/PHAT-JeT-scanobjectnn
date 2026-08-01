@@ -97,6 +97,32 @@ introduced; recorded here for transparency.
   gradients and per-block retention). This empirically fixes the memory ceiling
   for config S at batch 32 somewhere between grid side 36 and 71.
 
+  Retried on an 80 GB A100: it runs, with no memory error — so grid side 71
+  needs more than 24 GB and fits in 80 GB. But it costs **1614 s (26.9 min) per
+  epoch**, i.e. ~4.7 days for one 250-epoch seed. Killed after 2 epochs: the
+  δ curve is already flattening (see below), so the extrapolated gain does not
+  justify roughly 8× the compute of δ=0.0625, and A100 capacity is contended.
+  Recorded as a deliberate stop, not a failure.
+
+**Accuracy vs cost across the δ ladder** (test OA at best-val epoch; the two
+finer settings are still mid-run and improving, so their figures are lower
+bounds):
+
+| δ | grid side | s/epoch | run time | test OA |
+|---|---|---|---|---|
+| 0.5 | 5 | ~10 | ~0.7 h | 0.595 |
+| 0.25 | 9 | ~14 | ~1.0 h | 0.649 |
+| 0.125 | 18 | ~16–20 | ~1.2 h | 0.740 (3 seeds, complete) |
+| 0.09375 | 24 | 47 | ~3.3 h | ≥0.750 (ep. 190/250) |
+| 0.0625 | 36 | 203 | ~14 h | ≥0.757 (ep. 122/250) |
+| 0.03125 | 71 | 1614 | ~4.7 days | abandoned |
+
+Accuracy keeps improving as the grid refines, but with clear diminishing
+returns: roughly +1.0 point from δ=0.125 to 0.09375, then +0.7 more to 0.0625,
+while compute rises 3× then 4× again. This is a useful result in its own right
+for a study about resource-efficient models — the best grid setting is an order
+of magnitude more expensive than one that is only ~1.7 points worse.
+
 **Cost:** δ=0.0625 runs at 203 s/epoch versus roughly 16–20 s/epoch at δ=0.125 —
 about 10× slower, so ~14 h per 250-epoch run. Whether that is worth it depends
 entirely on whether it beats δ=0.125's 0.734; the compute cost of the finest
