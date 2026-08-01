@@ -125,16 +125,28 @@ def test_train_sample_shape_and_variation():
     assert not np.allclose(first, second), "augmentation should vary per epoch"
 
 
-def test_height_append_is_raw_y_before_normalization():
+def test_height_append_is_raw_y_scaled_by_the_same_augmentation_factor():
+    """Height is the raw (un-normalized) y, so it carries absolute object size
+    -- PointNeXt appends it precisely to make the network "aware of the actual
+    size", which unit-sphere normalization destroys.
+
+    But it must be scaled by the same factor as the geometry: scale
+    augmentation simulates a differently sized object, so its height changes
+    too. Leaving height unscaled would hand the model a height contradicting
+    the points beside it, and the ratio between them would leak the
+    label-irrelevant augmentation factor.
+    """
     raw = _raw()
     expected_rng = np.random.default_rng(23)
     idx = expected_rng.choice(raw.shape[0], size=NUM_POINTS, replace=False)
+    scale = expected_rng.uniform(0.9, 1.1)  # same draw order as the pipeline
+
     actual = prepare_train_sample(
         raw, np.random.default_rng(23), "random",
         fixed_perm=np.arange(NUM_POINTS), height_append=True,
     )
     assert actual.shape == (NUM_POINTS, 4)
-    np.testing.assert_array_equal(actual[:, 3], raw[idx, 1])
+    np.testing.assert_allclose(actual[:, 3], raw[idx, 1] * scale, rtol=1e-6)
 
 
 def test_appended_height_is_invariant_to_y_rotation():

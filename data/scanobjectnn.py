@@ -36,9 +36,16 @@ def normalize_unit_sphere(points):
     return centered / np.maximum(radius, 1e-8)
 
 
-def random_scale(points, rng, low=0.9, high=1.1):
-    """Isotropic random scaling, one factor per cloud."""
-    return points * rng.uniform(low, high)
+def random_scale(points, rng, low=0.9, high=1.1, return_factor=False):
+    """Isotropic random scaling, one factor per cloud.
+
+    `return_factor` exposes the drawn factor so callers can apply the same
+    scaling to derived features (e.g. appended height). The RNG draw order is
+    unchanged, so results are identical to the previous implementation.
+    """
+    factor = rng.uniform(low, high)
+    scaled = points * factor
+    return (scaled, factor) if return_factor else scaled
 
 
 def random_rotation_y(points, rng):
@@ -110,10 +117,15 @@ def prepare_train_sample(raw_points, rng, ordering, fixed_perm=None,
     # PointNeXt height is the raw gravity-axis measurement.  Capture it before
     # centering/unit-sphere normalization removes absolute height and scale.
     height = selected[:, 1:2]
-    points = normalize_unit_sphere(selected)
-    points = random_rotation_y(random_scale(points, rng), rng)
+    points, scale = random_scale(normalize_unit_sphere(selected), rng,
+                                 return_factor=True)
+    points = random_rotation_y(points, rng)
     if height_append:
-        points = np.concatenate([points, height], axis=-1)
+        # The same scale factor must apply to the height. Scale augmentation
+        # simulates a differently sized object, so its height changes too;
+        # leaving height unscaled would feed the model a height that
+        # contradicts the geometry beside it.
+        points = np.concatenate([points, height * scale], axis=-1)
     # Ordering must come after augmentation: rotation changes Morton codes.
     return apply_order(points, ordering, fixed_perm).astype(np.float32)
 
