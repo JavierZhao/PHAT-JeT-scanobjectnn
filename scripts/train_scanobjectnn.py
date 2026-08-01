@@ -112,7 +112,14 @@ def make_eval_arrays(points, labels, args, fixed_perm):
 
 def evaluate(model, points, labels, batch_size):
     """Overall accuracy and mean class accuracy from a full confusion matrix."""
-    preds = np.argmax(model.predict(points, batch_size=batch_size, verbose=0), axis=1)
+    # Batch explicitly instead of calling predict() on a new numpy array each
+    # epoch.  predict() constructs a fresh data adapter/iterator per call; on
+    # TF/Keras 2.13 those objects retain host buffers over long runs.  The
+    # compiled predict_on_batch function is cached and reused.
+    predicted = []
+    for start in range(0, len(points), batch_size):
+        predicted.append(model.predict_on_batch(points[start:start + batch_size]))
+    preds = np.argmax(np.concatenate(predicted, axis=0), axis=1)
     overall = float((preds == labels).mean())
 
     per_class = []
@@ -123,6 +130,51 @@ def evaluate(model, points, labels, batch_size):
         if mask.sum():
             per_class.append(float((preds[mask] == cls).mean()))
     return overall, float(np.mean(per_class))
+
+
+def train_one_epoch(model, points, one_hot, batch_size):
+    """Train on one already-shuffled numpy epoch using one compiled function.
+
+    This has the same batch boundaries and optimizer updates as fit(...,
+    epochs=1, shuffle=False), without constructing a new numpy data adapter on
+    every epoch.  Keras' loss metric is reset once here, as fit does at the
+    beginning of an epoch, so the final returned loss is the epoch aggregate.
+    """
+    model.reset_metrics()
+    result = None
+    for start in range(0, len(points), batch_size):
+        result = model.train_on_batch(
+            points[start:start + batch_size],
+            one_hot[start:start + batch_size],
+        )
+    if result is None:
+        raise ValueError("cannot train on an empty epoch")
+    if isinstance(result, dict):
+        return float(result["loss"])
+    if isinstance(result, (list, tuple)):
+        return float(result[0])
+    return float(result)
+
+
+def preserve_previous_metrics(out_dir):
+    """Move an earlier attempt's metrics aside before starting from epoch 0."""
+    metrics_path = os.path.join(out_dir, "metrics.json")
+    if not os.path.exists(metrics_path):
+        return None
+
+    epochs_completed = "unknown"
+    try:
+        with open(metrics_path) as handle:
+            epochs_completed = json.load(handle).get("epochs_completed", "unknown")
+    except (OSError, ValueError, TypeError):
+        pass
+
+    attempt = 1
+    while os.path.exists(os.path.join(out_dir, f"metrics.attempt{attempt}.json")):
+        attempt += 1
+    archived = os.path.join(out_dir, f"metrics.attempt{attempt}.json")
+    os.replace(metrics_path, archived)
+    return archived, epochs_completed
 
 
 class MetricsLog:
@@ -186,12 +238,20 @@ class MetricsLog:
 def main():
     args = parse_args()
     os.makedirs(args.out, exist_ok=True)
+    previous_metrics = preserve_previous_metrics(args.out)
     logging.basicConfig(
         filename=os.path.join(args.out, "train.log"),
         filemode="w",
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
     )
+    if previous_metrics is not None:
+        archived, epochs_completed = previous_metrics
+        logging.warning(
+            "FOUND PREVIOUS ATTEMPT with %s completed epochs; preserved it as %s "
+            "before restarting from epoch 0",
+            epochs_completed, archived,
+        )
     set_seeds(args.seed)
     logging.info("args: %s", vars(args))
 
@@ -254,17 +314,11 @@ def main():
         points, one_hot = make_train_epoch(
             epoch_points, epoch_labels, args, fixed_perm, epoch
         )
-        # One fit call per epoch. The cosine schedule advances with
-        # optimizer.iterations, which persists across calls.
-        history = model.fit(
-            points,
-            one_hot,
-            batch_size=args.batch_size,
-            epochs=1,
-            shuffle=False,  # already shuffled when the epoch was built
-            verbose=0,
-        )
-        metrics.record_epoch(epoch, history.history["loss"][-1])
+        # Reuse the compiled batch function.  The cosine schedule advances
+        # with optimizer.iterations exactly once per batch across epochs.
+        train_loss = train_one_epoch(model, points, one_hot, args.batch_size)
+        metrics.record_epoch(epoch, train_loss)
+        del points, one_hot
 
     model.save_weights(os.path.join(args.out, "final.weights.h5"))
     final_test_oa, final_test_macc = evaluate(model, test[0], test[1], args.batch_size)
