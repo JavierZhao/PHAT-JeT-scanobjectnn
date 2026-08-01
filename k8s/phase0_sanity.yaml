@@ -29,7 +29,7 @@ spec:
         - |
           git clone --no-checkout https://github.com/JavierZhao/PHAT-JeT-scanobjectnn.git /opt/repo/PHAT-JeT && \
           cd /opt/repo/PHAT-JeT && \
-          git checkout 566ae8f08cde1d9df26b5aeaa129ba15c8277caf && \
+          git checkout be4be788eb9a220e29be1ce5489c3ca0de7d582c && \
           chown -R 1000:1000 /opt/repo/PHAT-JeT
         volumeMounts:
         - name: git-repo
