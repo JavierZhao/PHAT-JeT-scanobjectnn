@@ -81,6 +81,40 @@ Config S matches the handoff's "a few hours" assumption. **Config L does not** �
 three seeds of the L rung is roughly 51 GPU-hours. Worth deciding before Phase B
 whether that is acceptable or whether the L runs need a different arrangement.
 
+## Phase A — COMPLETE (all 12 pre-registered runs, 3 seeds each)
+
+Test OA at the best-validation epoch, config S (612,111 params), Morton ordering.
+
+| Condition | grid side | seed 0 | seed 1 | seed 2 | mean ± std |
+|---|---|---|---|---|---|
+| GMP on, δ=0.125 | 18 | 0.7425 | 0.7415 | 0.7353 | **0.7398 ± 0.0032** |
+| GMP **off** | — | 0.6558 | 0.6471 | 0.6659 | **0.6563 ± 0.0077** |
+| GMP on, δ=0.25 | 9 | 0.6502 | 0.6468 | 0.6582 | 0.6517 ± 0.0048 |
+| GMP on, δ=0.5 | 5 | 0.5902 | 0.6006 | 0.5975 | 0.5961 ± 0.0044 |
+
+### The GMP ablation must be reported conditionally
+
+With all three seeds in, **GMP-off (0.6563) is slightly ahead of GMP-on at
+δ=0.25 (0.6517)**, and well ahead of GMP-on at δ=0.5 (0.5961). The gap at
+δ=0.25 (0.0046) is smaller than the GMP-off seed spread (0.0077), so the honest
+reading is "indistinguishable", not "GMP-off wins" — but it is certainly not
+evidence that GMP helps.
+
+At δ=0.125, GMP-on (0.7398) beats GMP-off by **8.4 points**, far outside seed
+noise.
+
+So the defensible claim is *not* "GMP helps". It is: **the GMP prior helps only
+when the voxel grid is fine enough to resolve local structure; at coarse
+resolution it is no better than no prior at all, and at very coarse resolution
+it actively hurts.** Any writeup that quotes a single GMP on/off number without
+stating δ would be misleading.
+
+Note on the pre-registered stop condition ("if GMP-off ≥ GMP-on, stop and report
+before Phase B"): read at the coarse anchor it is technically met; read at δ\*,
+where the comparison is meant to be made, GMP-on wins decisively. Phase B was
+launched at Zihan's direction with this understood. Flagged here so the decision
+is on the record rather than implicit.
+
 ## Phase A extension — finer δ (beyond pre-registration)
 
 Phase A's δ trend was monotonic and had not turned over (0.5 → 0.25 → 0.125
