@@ -93,6 +93,7 @@ class PatchedAttention(layers.Layer):
         patch_size,
         dropout=0.0,
         use_flash_attention=False,
+        coord_dim=2,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -100,6 +101,7 @@ class PatchedAttention(layers.Layer):
         self.num_heads = num_heads
         self.d_head = d_model // num_heads
         self.patch_size = patch_size
+        self.coord_dim = coord_dim  # 2 for (eta, phi) jets, 3 for xyz point clouds
         self.use_flash_attention = use_flash_attention and FLASH_ATTENTION_AVAILABLE
 
         if self.use_flash_attention:
@@ -127,7 +129,12 @@ class PatchedAttention(layers.Layer):
         return tf.reshape(x, [b, t, h * dh])
 
     def call(self, x, coords, training=False):
-        B, T, D = tf.unstack(tf.shape(x))
+        B = tf.shape(x)[0]
+        # Prefer the static length: Keras 3 does not run call() through
+        # AutoGraph, so a Python `if` on a symbolic length would fail there.
+        # Falls back to the dynamic value, as before, when N is unknown.
+        T = x.shape[1] if x.shape[1] is not None else tf.shape(x)[1]
+        D = self.d_model
         P = self.patch_size
 
         # Pad if necessary
@@ -142,8 +149,10 @@ class PatchedAttention(layers.Layer):
         # Reshape to patches
         x_patched = tf.reshape(x, [B, num_patches, P, D])
         x_patched = tf.reshape(x_patched, [B * num_patches, P, D])
-        coords_patched = tf.reshape(coords, [B, num_patches, P, 2])
-        coords_patched = tf.reshape(coords_patched, [B * num_patches, P, 2])
+        coords_patched = tf.reshape(coords, [B, num_patches, P, self.coord_dim])
+        coords_patched = tf.reshape(
+            coords_patched, [B * num_patches, P, self.coord_dim]
+        )
 
         if self.use_flash_attention:
             # Use Flash Attention via MultiHeadAttention
@@ -338,12 +347,14 @@ class PatchMessageBroadcast(layers.Layer):
         dropout=0.0,
         message_proj=True,
         gated=False,
+        coord_dim=2,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self.d_model = d_model
         self.num_heads = num_heads
         self.patch_size = patch_size
+        self.coord_dim = coord_dim  # 2 for (eta, phi) jets, 3 for xyz point clouds
         self.tokenizer_mode = tokenizer_mode
         self.dropout = layers.Dropout(dropout)
         self.message_proj = message_proj
@@ -379,7 +390,8 @@ class PatchMessageBroadcast(layers.Layer):
         return msg_tokens: [B, T, D] (message to be added)
         """
         B = tf.shape(x)[0]
-        T = tf.shape(x)[1]
+        # Static length preferred; see the note in PatchedAttention.call.
+        T = x.shape[1] if x.shape[1] is not None else tf.shape(x)[1]
         D = self.d_model
         P = self.patch_size
 
@@ -392,10 +404,10 @@ class PatchMessageBroadcast(layers.Layer):
         NP = T_pad // P
 
         x_patch = tf.reshape(x, [B, NP, P, D])
-        c_patch = tf.reshape(coords, [B, NP, P, 2])
+        c_patch = tf.reshape(coords, [B, NP, P, self.coord_dim])
 
         # patch coords (mean coordinates per patch)
-        pcoords = tf.reduce_mean(c_patch, axis=2)  # [B, NP, 2]
+        pcoords = tf.reduce_mean(c_patch, axis=2)  # [B, NP, coord_dim]
 
         # patch tokens
         p = self.tokenizer(x_patch)  # [B, NP, D]

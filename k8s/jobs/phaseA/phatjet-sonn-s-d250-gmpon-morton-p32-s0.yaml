@@ -1,0 +1,84 @@
+# Rendered by gen_jobs.py -- do not apply directly, the braced fields are
+# substituted per run. Adapted from the group's conv_linformer.yml with the
+# deviations documented in PLAN_scanobjectnn.md section 3.6.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: phatjet-sonn-s-d250-gmpon-morton-p32-s0
+  namespace: cms-ml
+  labels:
+    jobgroup: phatjet-sonn
+    phase: "a"
+spec:
+  parallelism: 1
+  completions: 1
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        jobgroup: phatjet-sonn
+        phase: "a"
+    spec:
+      restartPolicy: Never
+      initContainers:
+      - name: init-clone-repo
+        image: alpine/git
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          git clone --no-checkout https://github.com/aaronw5/PHAT-JeT.git /opt/repo/PHAT-JeT && \
+          cd /opt/repo/PHAT-JeT && \
+          git checkout PLACEHOLDER && \
+          chown -R 1000:1000 /opt/repo/PHAT-JeT
+        volumeMounts:
+        - name: git-repo
+          mountPath: /opt/repo
+        resources:
+          requests: {cpu: '1', memory: 1Gi}
+          limits: {cpu: '1', memory: 1Gi}
+      containers:
+      - name: train
+        image: gitlab-registry.nrp-nautilus.io/jmduarte/hbb_interaction_network:latest
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          cd /opt/repo/PHAT-JeT && \
+          python scripts/train_scanobjectnn.py \
+            --data_dir /j-jepa-vol/scanobjectnn/main_split \
+            --out /j-jepa-vol/phatjet-sonn/runs/phatjet-sonn-s-d250-gmpon-morton-p32-s0 \
+            --config S \
+            --delta 0.25 \
+            --gmp on \
+            --ordering morton \
+            --patch_size 32 \
+            --seed 0
+        env:
+        - name: GIT_SHA
+          value: "PLACEHOLDER"
+        - name: IMAGE_DIGEST
+          value: "gitlab-registry.nrp-nautilus.io/jmduarte/hbb_interaction_network:latest"
+        volumeMounts:
+        - name: git-repo
+          mountPath: /opt/repo
+        - name: j-jepa-vol
+          mountPath: /j-jepa-vol
+        resources:
+          # The cluster enforces limit/request <= 1.2 on both cpu and memory.
+          requests: {cpu: '4', memory: 12Gi, nvidia.com/gpu: 1}
+          limits: {cpu: '4', memory: 14Gi, nvidia.com/gpu: 1}
+      volumes:
+      - name: git-repo
+        emptyDir: {}
+      - name: j-jepa-vol
+        persistentVolumeClaim:
+          claimName: j-jepa-vol
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: nvidia.com/gpu.product
+                operator: In
+                values:
+                - NVIDIA-GeForce-RTX-3090
+                - NVIDIA-GeForce-RTX-4090
