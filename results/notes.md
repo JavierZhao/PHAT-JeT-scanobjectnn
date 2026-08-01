@@ -166,6 +166,53 @@ resource-efficient models.
 The handoff's "grid side ≤ 32" guidance turns out to be close to the true
 hardware limit rather than merely conservative: side 36 works, side 71 does not.
 
+## Phase B — scaling ladder (interim, most runs 225–250 epochs)
+
+Test OA at best-validation epoch. Runs marked † were cut short by the
+host-memory bug below at the stated epoch, and are being rerun with 32 GiB;
+their best-val epoch had already passed, so the numbers are near-final but not
+protocol-clean.
+
+| Config | params | δ=0.125 | δ=0.09375 |
+|---|---|---|---|
+| XS | 156,559 | 0.7273 ± 0.012 | 0.7506 ± 0.003 † |
+| S | 612,111 | 0.7398 ± 0.003 | 0.7580 (2 seeds) † |
+| M | 1,214,479 | 0.7400 ± 0.005 † | 0.7632 ± 0.006 † |
+| L | 2,712,591 | 0.7498 ± 0.004 † | **0.7715 ± 0.0025** (3 seeds, complete) |
+
+Two clear results:
+
+1. **δ=0.09375 beats δ=0.125 at every rung**, by 1.0–2.3 points. So δ\* is
+   0.09375, not the 0.125 that the pre-registered three-anchor sweep would have
+   selected. Probing finer than the handoff's anchors was necessary.
+2. **Scaling is very flat.** At δ\*, going from XS to L is 17× the parameters
+   for about +2 points (0.751 → 0.772). The architecture saturates quickly on
+   this dataset; accuracy is limited by grid resolution far more than by
+   capacity. XS at 156K params already reaches 0.751 — better than PointNet's
+   published 68.2% at 3.5M params.
+
+The best configuration so far is **L at δ=0.09375: 0.7715 ± 0.0025 OA,
+0.7324 mAcc**, 2.71M params. Those three runs completed all 250 epochs (they
+ran on A100s with 32 GiB host memory, so the leak never caught them).
+
+## Host-memory bug — the OOM wave
+
+After Phase B launched, 23 pods were OOMKilled: the entire M and L rungs plus
+several XS runs. Resident host memory grows with epoch count and grows faster
+with larger `d_model` and larger GMP grids, so the bigger configs died sooner
+(M at ~192 epochs, L at ~230, XS at ~240). This is cgroup host memory, not GPU.
+
+Root cause is under fix (per-epoch `model.fit()` / `model.predict()` calls
+rebuilding data adapters and retracing). The empirical mitigation is simply more
+host RAM: the three A100 L runs with 32 GiB completed 250 epochs on the *same*
+code, while their 14 GiB counterparts died. All reruns now request 32 GiB.
+
+**No completed result was lost**, because a snapshot CronJob (added after the
+first incident) copies each run's metrics.json to metrics.snapshot.json every
+10 minutes, only when the epoch count increases. That monotonicity also makes
+relaunching into the same output directory safe: a fresh run starting at epoch 0
+cannot regress the snapshot.
+
 ## Subagent note
 
 The Codex task that authored the rotation fix wedged after completing its work:

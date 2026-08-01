@@ -64,8 +64,8 @@ spec:
           mountPath: /j-jepa-vol
         resources:
           # The cluster enforces limit/request <= 1.2 on both cpu and memory.
-          requests: {cpu: '4', memory: 12Gi, nvidia.com/gpu: 1}
-          limits: {cpu: '4', memory: 14Gi, nvidia.com/gpu: 1}
+          requests: {cpu: '4', memory: 32Gi, nvidia.com/gpu: 1}
+          limits: {cpu: '4', memory: 32Gi, nvidia.com/gpu: 1}
       volumes:
       - name: git-repo
         emptyDir: {}
