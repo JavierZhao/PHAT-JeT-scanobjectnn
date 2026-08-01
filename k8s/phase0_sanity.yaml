@@ -1,14 +1,15 @@
-# Rendered by gen_jobs.py -- do not apply directly, the braced fields are
-# substituted per run. Adapted from the group's conv_linformer.yml with the
-# deviations documented in PLAN_scanobjectnn.md section 3.6.
+# Phase 0 gate: PointNet-style baseline on the real pipeline. Must reach >60%
+# test OA or nothing else launches (handoff Task 1.4).
+#   kubectl apply -f k8s/phase0_sanity.yaml
+#   kubectl logs -f job/phatjet-sonn-phase0-sanity -n cms-ml
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: phatjet-sonn-s-d500-gmpon-morton-p32-s1
+  name: phatjet-sonn-phase0-sanity
   namespace: cms-ml
   labels:
     jobgroup: phatjet-sonn
-    phase: "a"
+    phase: "0"
 spec:
   parallelism: 1
   completions: 1
@@ -17,7 +18,7 @@ spec:
     metadata:
       labels:
         jobgroup: phatjet-sonn
-        phase: "a"
+        phase: "0"
     spec:
       restartPolicy: Never
       initContainers:
@@ -37,33 +38,22 @@ spec:
           requests: {cpu: '1', memory: 1Gi}
           limits: {cpu: '1', memory: 1Gi}
       containers:
-      - name: train
+      - name: sanity
         image: gitlab-registry.nrp-nautilus.io/jmduarte/hbb_interaction_network@sha256:d876f8329b3345f2086e6cb6f70a3811810acdc87b40b6f15ee90c73b281ad1d
         command: ["/bin/bash", "-c"]
         args:
         - |
           cd /opt/repo/PHAT-JeT && \
-          python scripts/train_scanobjectnn.py \
+          python scripts/sanity_baseline.py \
             --data_dir /j-jepa-vol/scanobjectnn/main_split \
-            --out /j-jepa-vol/phatjet-sonn/runs/phatjet-sonn-s-d500-gmpon-morton-p32-s1 \
-            --config S \
-            --delta 0.5 \
-            --gmp on \
-            --ordering morton \
-            --patch_size 32 \
-            --seed 1
-        env:
-        - name: GIT_SHA
-          value: "c42e0c19a301abc884cdd59a42efd7191c4c9696"
-        - name: IMAGE_DIGEST
-          value: "gitlab-registry.nrp-nautilus.io/jmduarte/hbb_interaction_network@sha256:d876f8329b3345f2086e6cb6f70a3811810acdc87b40b6f15ee90c73b281ad1d"
+            --out /j-jepa-vol/phatjet-sonn/phase0/sanity \
+            --epochs 20
         volumeMounts:
         - name: git-repo
           mountPath: /opt/repo
         - name: j-jepa-vol
           mountPath: /j-jepa-vol
         resources:
-          # The cluster enforces limit/request <= 1.2 on both cpu and memory.
           requests: {cpu: '4', memory: 12Gi, nvidia.com/gpu: 1}
           limits: {cpu: '4', memory: 14Gi, nvidia.com/gpu: 1}
       volumes:

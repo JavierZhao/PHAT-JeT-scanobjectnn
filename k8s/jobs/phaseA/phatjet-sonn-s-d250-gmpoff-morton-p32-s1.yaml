@@ -26,9 +26,9 @@ spec:
         command: ["/bin/sh", "-c"]
         args:
         - |
-          git clone --no-checkout https://github.com/aaronw5/PHAT-JeT.git /opt/repo/PHAT-JeT && \
+          git clone --no-checkout https://github.com/JavierZhao/PHAT-JeT-scanobjectnn.git /opt/repo/PHAT-JeT && \
           cd /opt/repo/PHAT-JeT && \
-          git checkout PLACEHOLDER && \
+          git checkout c42e0c19a301abc884cdd59a42efd7191c4c9696 && \
           chown -R 1000:1000 /opt/repo/PHAT-JeT
         volumeMounts:
         - name: git-repo
@@ -38,7 +38,7 @@ spec:
           limits: {cpu: '1', memory: 1Gi}
       containers:
       - name: train
-        image: gitlab-registry.nrp-nautilus.io/jmduarte/hbb_interaction_network:latest
+        image: gitlab-registry.nrp-nautilus.io/jmduarte/hbb_interaction_network@sha256:d876f8329b3345f2086e6cb6f70a3811810acdc87b40b6f15ee90c73b281ad1d
         command: ["/bin/bash", "-c"]
         args:
         - |
@@ -54,9 +54,9 @@ spec:
             --seed 1
         env:
         - name: GIT_SHA
-          value: "PLACEHOLDER"
+          value: "c42e0c19a301abc884cdd59a42efd7191c4c9696"
         - name: IMAGE_DIGEST
-          value: "gitlab-registry.nrp-nautilus.io/jmduarte/hbb_interaction_network:latest"
+          value: "gitlab-registry.nrp-nautilus.io/jmduarte/hbb_interaction_network@sha256:d876f8329b3345f2086e6cb6f70a3811810acdc87b40b6f15ee90c73b281ad1d"
         volumeMounts:
         - name: git-repo
           mountPath: /opt/repo
