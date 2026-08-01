@@ -29,7 +29,7 @@ spec:
         - |
           git clone --no-checkout https://github.com/JavierZhao/PHAT-JeT-scanobjectnn.git /opt/repo/PHAT-JeT && \
           cd /opt/repo/PHAT-JeT && \
-          git checkout c17d8f0e6781e8ba44c5a3a53f1827c2bee70539 && \
+          git checkout 566ae8f08cde1d9df26b5aeaa129ba15c8277caf && \
           chown -R 1000:1000 /opt/repo/PHAT-JeT
         volumeMounts:
         - name: git-repo
@@ -47,7 +47,7 @@ spec:
           python scripts/sanity_baseline.py \
             --data_dir /j-jepa-vol/scanobjectnn/main_split \
             --out /j-jepa-vol/phatjet-sonn/phase0/sanity \
-            --epochs 20
+            --epochs 60
         volumeMounts:
         - name: git-repo
           mountPath: /opt/repo
