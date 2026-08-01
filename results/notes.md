@@ -195,6 +195,51 @@ The best configuration so far is **L at δ=0.09375: 0.7715 ± 0.0025 OA,
 0.7324 mAcc**, 2.71M params. Those three runs completed all 250 epochs (they
 ran on A100s with 32 GiB host memory, so the leak never caught them).
 
+## Published baselines — VERIFIED against original papers
+
+Checked directly against the source PDFs (not from memory, per the handoff).
+All ScanObjectNN PB_T50_RS.
+
+| Method | Params | OA (%) | mAcc (%) | Source |
+|---|---|---|---|---|
+| PointNet | 3.5M | 68.2 | 63.4 | PointNeXt Tab. 2; PointMLP Tab. 3 |
+| PointNet++ | 1.5M | 77.9 | 75.4 | both |
+| DGCNN | 1.8M | 78.1 | 73.6 | both |
+| PointCNN | 0.6M | 78.5 | 75.1 | PointNeXt Tab. 2 |
+| BGA-DGCNN | — | 79.7 | 75.7 | PointMLP Tab. 3 |
+| SimpleView | 0.8M | 80.5 ± 0.3 | — | both |
+| MVTN | 3.5M | 82.8 | — | PointNeXt Tab. 2 |
+| PointMLP-elite | 0.68M | 83.8 ± 0.6 | 81.8 ± 0.8 | PointMLP Tab. 3 |
+| PointMLP | 13.2M | 85.4 ± 1.3 | 83.9 ± 1.5 | PointNeXt Tab. 2 |
+| PointNet++ (PointNeXt training) | 1.5M | 86.1 ± 0.7 | 84.2 ± 0.9 | PointNeXt Tab. 2 |
+| PointNeXt-S | 1.4M | 87.7 ± 0.4 | 85.8 ± 0.6 | PointNeXt Tab. 2 |
+
+Sources: PointNeXt, NeurIPS 2022, Table 2; PointMLP, ICLR 2022 (arXiv 2202.07123),
+Table 3. PointMLP states it does *not* use the voting strategy, matching our
+protocol.
+
+**Corrections to the handoff's from-memory table:** PointMLP has **13.2M**
+parameters, not 12.6M. PointNet, PointNet++, DGCNN, PointMLP-elite and
+PointNeXt-S figures were accurate.
+
+### The critical context for interpreting our gap
+
+PointNeXt's central finding is that **PointNet++ improves from 77.9 to 86.1 OA
+(+8.2) with no architecture change at all** — purely from modern training
+strategy (augmentation and optimization). Their abstract states this explicitly.
+
+That reframes our comparison. Our recipe is deliberately simple (AdamW, cosine
+with warmup, label smoothing 0.2, 250 epochs, batch 32, scale + y-rotation, 1024
+points, no voting). PHAT-JeT-L's 77.2 sits essentially at the level of the
+*original-recipe* PointNet++ (77.9) and DGCNN (78.1), not at the level of
+modern-recipe results. So the ~10-point gap to PointNeXt-S is **not
+demonstrably an architecture gap** — a large part of it is plausibly a training
+gap that we have not attempted to close.
+
+This must be stated in the writeup. Claiming an architectural conclusion from
+this comparison without controlling for training strategy would be exactly the
+error PointNeXt was written to expose.
+
 ## Host-memory bug — the OOM wave
 
 After Phase B launched, 23 pods were OOMKilled: the entire M and L rungs plus
