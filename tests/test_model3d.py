@@ -107,9 +107,14 @@ def test_gradients_reach_the_gmp_conv():
         loss = tf.reduce_mean(tf.square(model(points, training=True)))
     grads = tape.gradient(loss, model.trainable_variables)
 
+    # Keras 3 exposes Variable.path; Keras 2 (TF 2.13 on the cluster) only has
+    # .name. The suite must pass under both.
+    def var_id(variable):
+        return (getattr(variable, "path", None) or variable.name).lower()
+
     gmp_grads = [
         g for g, v in zip(grads, model.trainable_variables)
-        if "conv3d" in v.path.lower() and g is not None
+        if "conv3d" in var_id(v) and g is not None
     ]
     assert gmp_grads, "no Conv3D variables found in the model"
     assert any(np.abs(g.numpy()).sum() > 0 for g in gmp_grads)
