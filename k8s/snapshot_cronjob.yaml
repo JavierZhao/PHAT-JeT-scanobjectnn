@@ -1,0 +1,67 @@
+# Safety net: every 10 minutes, copy each run's metrics.json to
+# metrics.snapshot.json if it has more epochs than the existing snapshot.
+#
+# Why: Kubernetes restarts an OOMKilled pod (backoffLimit 1), the retry reuses
+# the same --out directory and rewrites metrics.json from epoch 0, destroying
+# the previous attempt's results. This already cost us three partial runs.
+# train_scanobjectnn.py now archives prior attempts itself, but jobs pinned to
+# earlier commits do not have that fix, so this guards them.
+#
+#   kubectl apply -f k8s/snapshot_cronjob.yaml
+#   kubectl delete cronjob phatjet-sonn-snapshot -n cms-ml   # when done
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: phatjet-sonn-snapshot
+  namespace: cms-ml
+  labels:
+    jobgroup: phatjet-sonn-util
+spec:
+  schedule: "*/10 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+          - name: snapshot
+            image: python:3.11-slim
+            command: ["python", "-c"]
+            args:
+              - |
+                import json, os, glob, shutil
+                root = "/j-jepa-vol/phatjet-sonn/runs"
+                kept = 0
+                for d in sorted(glob.glob(root + "/*/")):
+                    m = os.path.join(d, "metrics.json")
+                    if not os.path.exists(m):
+                        continue
+                    try:
+                        n = json.load(open(m)).get("epochs_completed", 0)
+                    except Exception:
+                        continue
+                    snap = os.path.join(d, "metrics.snapshot.json")
+                    prev = 0
+                    if os.path.exists(snap):
+                        try:
+                            prev = json.load(open(snap)).get("epochs_completed", 0)
+                        except Exception:
+                            prev = 0
+                    if n > prev:
+                        shutil.copy2(m, snap)
+                        kept += 1
+                print(f"updated {kept} snapshots")
+            volumeMounts:
+            - name: v
+              mountPath: /j-jepa-vol
+            resources:
+              requests: {cpu: "500m", memory: 1Gi}
+              limits: {cpu: "500m", memory: 1Gi}
+          volumes:
+          - name: v
+            persistentVolumeClaim:
+              claimName: j-jepa-vol
