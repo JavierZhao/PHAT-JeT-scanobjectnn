@@ -81,6 +81,41 @@ Config S matches the handoff's "a few hours" assumption. **Config L does not** �
 three seeds of the L rung is roughly 51 GPU-hours. Worth deciding before Phase B
 whether that is acceptable or whether the L runs need a different arrangement.
 
+## Phase A extension — finer δ (beyond pre-registration)
+
+Phase A's δ trend was monotonic and had not turned over (0.5 → 0.25 → 0.125
+gave 0.595 → 0.653 → 0.734 test OA), so δ=0.125 may not be the optimum, only
+the finest anchor tested. At Zihan's direction, three extra jobs probe finer
+grids. **These are an extension beyond the pre-registered grid and are labelled
+`phase: aext`.** Selection remains on validation only, so no test-set tuning is
+introduced; recorded here for transparency.
+
+- δ=0.0625 (grid side ~36), seeds 0 and 1 — running.
+- δ=0.03125 (grid side ~71), seed 0 — **failed immediately with
+  `ResourceExhaustedError`** on a 24 GB RTX 3090, as predicted from the grid
+  tensor size (32 × 71³ × 128 × 4 B ≈ 5.9 GB per GMP grid, before conv output,
+  gradients and per-block retention). This empirically fixes the memory ceiling
+  for config S at batch 32 somewhere between grid side 36 and 71.
+
+**Cost:** δ=0.0625 runs at 203 s/epoch versus roughly 16–20 s/epoch at δ=0.125 —
+about 10× slower, so ~14 h per 250-epoch run. Whether that is worth it depends
+entirely on whether it beats δ=0.125's 0.734; the compute cost of the finest
+grids is itself a finding worth reporting, given the study is about
+resource-efficient models.
+
+The handoff's "grid side ≤ 32" guidance turns out to be close to the true
+hardware limit rather than merely conservative: side 36 works, side 71 does not.
+
+## Subagent note
+
+The Codex task that authored the rotation fix wedged after completing its work:
+it applied its three file changes, ran the Keras 2 test suite (exit 0), launched
+the Keras 3 suite, and then produced no further output for 2 h 21 min. No python
+process was alive and the machine was idle at load 0.55, so the command had
+exited without Codex recording it. The process was killed. Its code changes were
+already reviewed, independently verified (50 tests under both runtimes) and
+committed, so only its narrative summary was lost.
+
 ## Environment
 
 Cluster image is TF 2.13.0 / Keras 2.13.1; local development is TF 2.21 /
