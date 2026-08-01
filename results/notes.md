@@ -195,6 +195,44 @@ The best configuration so far is **L at δ=0.09375: 0.7715 ± 0.0025 OA,
 0.7324 mAcc**, 2.71M params. Those three runs completed all 250 epochs (they
 ran on A100s with 32 GiB host memory, so the leak never caught them).
 
+## Sparse GMP — removes the grid-resolution cost barrier
+
+The dense GMP grid costs O(B · side³ · C), which is why δ=0.03125 (side ~71)
+needed an 80 GB A100 and 27 min/epoch, and why the δ sweep had to stop before
+finding its optimum. But with 1024 points, **at most 1024 voxels are ever
+occupied**, regardless of grid side — the dense grid is almost entirely zeros.
+
+New variants in `models/gmp3d.py` (`sparse`, `sparse_mean`, `sparse_trilinear`)
+materialize only occupied voxels: coalesce points via `tf.unique` +
+`unsorted_segment_sum`, then evaluate the depthwise 3×3×3 convolution by
+gathering each occupied voxel's 27 neighbours through a sorted-key
+`tf.searchsorted` lookup. The existing `Conv3D` layer is reused purely as a
+weight container, so the sparse path uses the identical kernel layout — which is
+what makes equivalence provable rather than merely plausible. A test pins
+sparse ≡ dense with shared weights.
+
+Measured forward time (config-S dims, batch 4, 1024 points, CPU):
+
+| δ | grid side | dense | sparse | speedup |
+|---|---|---|---|---|
+| 0.125 | 17 | 0.31 s | 0.24 s | 1.3× |
+| 0.0625 | 33 | 1.36 s | 0.24 s | 5.7× |
+| 0.03125 | 65 | 17.16 s | 0.39 s | **44×** |
+
+**Sparse is essentially constant-time in grid resolution.** Dense scales as
+side³; sparse scales with the occupied-voxel count, which is bounded by N.
+
+This matters for the study's central finding. The δ sweep showed accuracy rising
+monotonically (0.596 → 0.758) with no turnover, but the dense cost curve made
+finer grids prohibitive, so we never found the optimum. Sparse GMP converts
+"finer is 10× more expensive" into "finer is nearly free", making the true
+optimum reachable. The dense path remains the default so all completed runs stay
+reproducible.
+
+Caveat not yet closed: equivalence is verified numerically on small inputs and
+in unit tests, but no full sparse training run has completed yet. Accuracy
+parity on a real run must be confirmed before any sparse result is reported.
+
 ## Published baselines — VERIFIED against original papers
 
 Checked directly against the source PDFs (not from memory, per the handoff).
