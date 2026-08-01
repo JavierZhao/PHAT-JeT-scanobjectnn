@@ -30,12 +30,39 @@ from data.scanobjectnn import (  # noqa: E402
 )
 
 
-def build_pointnet(num_points=NUM_POINTS, num_classes=NUM_CLASSES):
-    """Shared MLP -> global max pool -> classifier."""
+def _dense_bn_relu(x, units):
+    x = tf.keras.layers.Dense(units, use_bias=False)(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    return tf.keras.layers.Activation("relu")(x)
+
+
+def build_pointnet(num_points=NUM_POINTS, num_classes=NUM_CLASSES,
+                   variant="pointnet"):
+    """Build the gate model, or its former minimal variant for diagnostics.
+
+    The gate intentionally omits PointNet's learned transform matrices, but
+    retains its shared-MLP widths, batch normalization, max pooling, and
+    classifier capacity.  This is still a fast pipeline check, not a reported
+    benchmark model.
+    """
     points = tf.keras.layers.Input((num_points, 3))
-    x = tf.keras.layers.Dense(64, activation="relu")(points)
-    x = tf.keras.layers.Dense(128, activation="relu")(x)
+    x = points
+    if variant == "minimal":
+        x = tf.keras.layers.Dense(64, activation="relu")(points)
+        x = tf.keras.layers.Dense(128, activation="relu")(x)
+        x = tf.keras.layers.GlobalMaxPooling1D()(x)
+        logits = tf.keras.layers.Dense(num_classes)(x)
+        return tf.keras.Model(points, logits, name="pointnet_sanity_minimal")
+    if variant != "pointnet":
+        raise ValueError(f"unknown PointNet variant: {variant!r}")
+
+    for units in (64, 64, 64, 128, 1024):
+        x = _dense_bn_relu(x, units)
     x = tf.keras.layers.GlobalMaxPooling1D()(x)
+    x = _dense_bn_relu(x, 512)
+    x = tf.keras.layers.Dropout(0.3)(x)
+    x = _dense_bn_relu(x, 256)
+    x = tf.keras.layers.Dropout(0.3)(x)
     logits = tf.keras.layers.Dense(num_classes)(x)
     return tf.keras.Model(points, logits, name="pointnet_sanity")
 
@@ -44,7 +71,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_dir", required=True)
     parser.add_argument("--out", required=True)
-    parser.add_argument("--epochs", type=int, default=20)
+    parser.add_argument("--epochs", type=int, default=60)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--threshold", type=float, default=0.60)
     parser.add_argument("--seed", type=int, default=0)
@@ -67,7 +94,7 @@ def main():
     model = build_pointnet()
     model.compile(
         optimizer=tf.keras.optimizers.Adam(1e-3),
-        loss=tf.keras.losses.CategoricalCrossentropy(from_logits=True),
+        loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
     )
 
     started = time.time()
@@ -78,8 +105,7 @@ def main():
         batch = np.stack(
             [prepare_train_sample(train_points[i], rng, "morton") for i in order]
         )
-        one_hot = np.eye(NUM_CLASSES, dtype=np.float32)[train_labels[order]]
-        model.fit(batch, one_hot, batch_size=args.batch_size, epochs=1,
+        model.fit(batch, train_labels[order], batch_size=args.batch_size, epochs=1,
                   shuffle=False, verbose=0)
 
         preds = np.argmax(

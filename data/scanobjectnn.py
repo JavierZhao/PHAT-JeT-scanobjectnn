@@ -41,12 +41,12 @@ def random_scale(points, rng, low=0.9, high=1.1):
     return points * rng.uniform(low, high)
 
 
-def random_rotation_z(points, rng):
-    """Random rotation about the up axis (PointNeXt/PointMLP convention)."""
+def random_rotation_y(points, rng):
+    """Random rotation about ScanObjectNN's y-up axis."""
     theta = rng.uniform(0, 2 * np.pi)
     cos, sin = np.cos(theta), np.sin(theta)
     matrix = np.array(
-        [[cos, -sin, 0.0], [sin, cos, 0.0], [0.0, 0.0, 1.0]], dtype=np.float32
+        [[cos, 0.0, sin], [0.0, 1.0, 0.0], [-sin, 0.0, cos]], dtype=np.float32
     )
     return points @ matrix.T
 
@@ -107,7 +107,7 @@ def prepare_train_sample(raw_points, rng, ordering, fixed_perm=None,
     """Resample -> normalize -> augment -> order. raw_points: [2048, 3]."""
     idx = rng.choice(raw_points.shape[0], size=num_points, replace=False)
     points = normalize_unit_sphere(raw_points[idx].astype(np.float32))
-    points = random_rotation_z(random_scale(points, rng), rng)
+    points = random_rotation_y(random_scale(points, rng), rng)
     # Ordering must come after augmentation: rotation changes Morton codes.
     return apply_order(points, ordering, fixed_perm).astype(np.float32)
 
@@ -157,7 +157,10 @@ def load_h5(path):
 
     with h5py.File(path, "r") as handle:
         points = np.array(handle["data"]).astype(np.float32)
-        labels = np.array(handle["label"]).astype(np.int64)
+        # ScanObjectNN mirrors exist with both [M] and [M, 1] label datasets.
+        # Canonicalize at the boundary: leaving [M, 1] intact makes a later
+        # comparison against predictions [M] silently broadcast to [M, M].
+        labels = np.array(handle["label"]).astype(np.int64).reshape(-1)
     return points, labels
 
 

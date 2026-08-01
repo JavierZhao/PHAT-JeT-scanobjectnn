@@ -14,11 +14,12 @@ from data.scanobjectnn import (
     apply_order,
     eval_subsample_indices,
     fixed_random_order,
+    load_h5,
     morton_order,
     normalize_unit_sphere,
     prepare_eval_sample,
     prepare_train_sample,
-    random_rotation_z,
+    random_rotation_y,
     random_scale,
     stratified_train_val_split,
 )
@@ -35,21 +36,27 @@ def test_normalize_gives_zero_mean_unit_radius():
     np.testing.assert_allclose(np.linalg.norm(points, axis=-1).max(), 1.0, atol=1e-5)
 
 
+def test_normalize_batched_matches_per_cloud_calls():
+    raw = np.stack([_raw(seed=seed) for seed in range(3)])
+    expected = np.stack([normalize_unit_sphere(cloud) for cloud in raw])
+    np.testing.assert_allclose(normalize_unit_sphere(raw), expected, atol=1e-6)
+
+
 def test_augmentation_stays_within_the_delta_memory_assumption():
     """Scale <=1.1 on a unit sphere keeps coords in [-1.1, 1.1]."""
     rng = np.random.default_rng(1)
     points = normalize_unit_sphere(_raw())
     for _ in range(50):
-        augmented = random_rotation_z(random_scale(points, rng), rng)
+        augmented = random_rotation_y(random_scale(points, rng), rng)
         assert np.abs(augmented).max() <= 1.1 + 1e-5
 
 
-def test_rotation_preserves_shape_and_z():
+def test_rotation_preserves_shape_and_y_up_axis():
     rng = np.random.default_rng(2)
     points = normalize_unit_sphere(_raw())
-    rotated = random_rotation_z(points, rng)
+    rotated = random_rotation_y(points, rng)
     assert rotated.shape == points.shape
-    np.testing.assert_allclose(rotated[:, 2], points[:, 2], atol=1e-6)
+    np.testing.assert_allclose(rotated[:, 1], points[:, 1], atol=1e-6)
     np.testing.assert_allclose(
         np.linalg.norm(rotated, axis=-1), np.linalg.norm(points, axis=-1), atol=1e-5
     )
@@ -116,6 +123,52 @@ def test_train_sample_shape_and_variation():
     assert first.shape == (NUM_POINTS, 3)
     assert first.dtype == np.float32
     assert not np.allclose(first, second), "augmentation should vary per epoch"
+
+
+def test_train_sample_preserves_y_coordinates_except_isotropic_scale():
+    """Regression: augmentation rotates around y, never z."""
+    raw = _raw()
+    rng_expected = np.random.default_rng(17)
+    idx = rng_expected.choice(raw.shape[0], size=NUM_POINTS, replace=False)
+    normalized = normalize_unit_sphere(raw[idx].astype(np.float32))
+    scale = rng_expected.uniform(0.9, 1.1)
+    rng_actual = np.random.default_rng(17)
+    prepared = prepare_train_sample(raw, rng_actual, "random", fixed_perm=np.arange(NUM_POINTS))
+    np.testing.assert_allclose(prepared[:, 1], normalized[:, 1] * scale, atol=1e-6)
+
+
+def test_epoch_object_shuffle_keeps_labels_aligned():
+    labels = np.arange(NUM_CLASSES)
+    clouds = np.stack([_raw(num=NUM_POINTS, seed=i) for i in labels])
+    rng = np.random.default_rng(18)
+    order = rng.permutation(len(labels))
+    shuffled_clouds = clouds[order]
+    shuffled_labels = labels[order]
+    for cloud, label in zip(shuffled_clouds, shuffled_labels):
+        np.testing.assert_array_equal(cloud, clouds[label])
+
+
+@pytest.mark.parametrize("label_shape", [(7,), (7, 1)])
+def test_load_h5_canonicalizes_labels_to_vector(tmp_path, label_shape):
+    h5py = pytest.importorskip("h5py")
+    path = tmp_path / "tiny.h5"
+    expected = np.arange(7, dtype=np.int64)
+    with h5py.File(path, "w") as handle:
+        handle["data"] = np.zeros((7, 8, 3), dtype=np.float32)
+        handle["label"] = expected.reshape(label_shape)
+    _, labels = load_h5(path)
+    assert labels.shape == (7,)
+    np.testing.assert_array_equal(labels, expected)
+
+
+def test_sanity_model_has_pointnet_capacity_and_batch_norm():
+    from scripts.sanity_baseline import build_pointnet
+
+    model = build_pointnet(num_points=32)
+    batch_norms = [layer for layer in model.layers
+                   if layer.__class__.__name__ == "BatchNormalization"]
+    assert len(batch_norms) == 7
+    assert model.count_params() > 750_000
 
 
 def test_eval_sample_is_deterministic():
