@@ -212,6 +212,53 @@ patches costs well under a point, which further undercuts the receptive-field
 explanation — if patch contents barely matter, patch geometry is not the
 bottleneck.
 
+## 3g. Hierarchy and receptive-field scaling — NO effect
+
+Config M, δ\*, height on, 2 seeds per arm, against the height baseline of
+80.46 ± 0.71 (3 seeds).
+
+| arm | mechanism | test OA | vs baseline |
+|---|---|---|---|
+| **baseline** (height only) | — | **80.46 ± 0.71** | — |
+| `ds2-none` | downsample 1024→512, δ fixed | 80.52 | +0.1 |
+| `ds2-density` | downsample + δ × 2^⅓ | 81.06 | +0.6 |
+| `ds2-double` | downsample + δ × 2 | 80.64 | +0.2 |
+| `coarse-pool2` | parallel coarse path, full resolution | 80.21 | −0.3 |
+| `rf-kernel5` | GMP extent ±0.094 → ±0.188 | 79.51 | **−1.0** |
+| `rf-kernel7` | GMP extent → ±0.281 | incomplete | trending down |
+
+**Every arm falls inside the baseline's own seed spread (±0.71).** The largest
+effect, `ds2-density` at +0.6, is smaller than that spread and rests on two
+seeds. Nothing here is a result.
+
+Widening the GMP kernel is, if anything, mildly **harmful** (−1.0 at kernel 5,
+with kernel 7 trending worse still before completion).
+
+### What this means, taken with Phases C and D
+
+Three independent probes of spatial aggregation now agree:
+
+| probe | knob | effect |
+|---|---|---|
+| Phase D | local-attention patch size (16→128) | none, slightly negative |
+| Phase C | Morton vs random ordering | 0.64, ~1σ |
+| §3g | hierarchy, GMP extent, coarse path | none, kernel widening negative |
+
+**The architecture is insensitive to how information is spatially aggregated.**
+Meanwhile the two large gains — GMP grid resolution (+8.4) and absolute height
+(+4.8) — are both about *what information is available at all*.
+
+A plausible reading: PHAT's patch-token mechanism already provides a global
+communication path (every patch talks to every other through its token), so
+additional hierarchy or wider kernels are redundant, and over-smoothing costs a
+little. If so, the jet architecture's design is doing its job on point clouds —
+the bottleneck is input representation, not information flow.
+
+This also means the remaining ~7 points to PointNeXt-S are **not** explained by
+hierarchy or receptive field. The untested candidate with the strongest prior is
+the rest of the training recipe: PointNeXt demonstrated +8.2 OA on PointNet++
+from training strategy alone, and we have so far adopted only one element of it.
+
 ## 4. Sources for baseline numbers
 
 [1] Qian et al., *PointNeXt: Revisiting PointNet++ with Improved Training and
