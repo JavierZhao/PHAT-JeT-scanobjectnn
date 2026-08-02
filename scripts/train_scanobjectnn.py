@@ -114,7 +114,7 @@ def parse_args(argv=None):
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--recipe", choices=RECIPE_DEFAULTS, default="current")
     p.add_argument(
-        "--height_mode", choices=["raw", "shifted", "unit"], default="raw",
+        "--height_mode", choices=["raw", "shifted", "unit", "xyz_shifted"], default="raw",
         help="Appended-height definition: raw centred height, shifted above "
              "the object base, or unit (normalized y -- a control that adds "
              "no information beyond xyz).",
@@ -305,7 +305,9 @@ def build_classifier(args):
     if not args.height_append:
         return base
 
-    features = tf.keras.layers.Input((NUM_POINTS, 4), name="points")
+    # xyz_shifted appends three absolute-offset channels, the others one.
+    extra = 3 if args.height_mode == "xyz_shifted" else 1
+    features = tf.keras.layers.Input((NUM_POINTS, 3 + extra), name="points")
     coords = tf.keras.layers.Lambda(
         lambda tensor: tensor[..., :3], name="xyz_coordinates"
     )(features)
@@ -324,12 +326,13 @@ def build_classifier(args):
     return tf.keras.Model(features, logits, name=base.name)
 
 
-def model_for_flops(model, height_append):
+def model_for_flops(model, height_append, height_mode="raw"):
     """Give the legacy three-channel FLOPs helper a shape-compatible graph."""
     if not height_append:
         return model
     xyz = tf.keras.layers.Input((NUM_POINTS, 3), name="flops_xyz")
-    inputs = tf.keras.layers.Concatenate(axis=-1)([xyz, xyz[..., 1:2]])
+    extra = xyz if height_mode == "xyz_shifted" else xyz[..., 1:2]
+    inputs = tf.keras.layers.Concatenate(axis=-1)([xyz, extra])
     return tf.keras.Model(xyz, model(inputs))
 
 
@@ -487,7 +490,7 @@ def main():
     # Profiled last: it builds a separate graph and is version-sensitive, so a
     # failure here must not cost a completed training run.
     try:
-        flops = int(count_flops(model_for_flops(model, args.height_append), NUM_POINTS))
+        flops = int(count_flops(model_for_flops(model, args.height_append, args.height_mode), NUM_POINTS))
     except Exception as exc:
         logging.warning("FLOPs profiling failed: %s", exc)
         flops = None

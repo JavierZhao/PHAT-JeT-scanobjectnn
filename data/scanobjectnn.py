@@ -109,10 +109,10 @@ def apply_order(points, ordering, fixed_perm=None):
 # --------------------------------------------------------------------------
 # Sample-level composition
 # --------------------------------------------------------------------------
-HEIGHT_MODES = ("raw", "shifted", "unit")
+HEIGHT_MODES = ("raw", "shifted", "unit", "xyz_shifted")
 
 
-def _height_feature(raw_height, augmented_points, scale, mode):
+def _height_feature(raw_height, augmented_points, scale, mode, raw_xyz=None):
     """Build the appended height channel.
 
     Measured on the real training split (2000 objects): ScanObjectNN objects
@@ -137,6 +137,24 @@ def _height_feature(raw_height, augmented_points, scale, mode):
         return (raw_height - raw_height.min()) * scale
     if mode == "unit":
         return augmented_points[:, 1:2]
+    if mode == "xyz_shifted":
+        # Absolute offset on ALL THREE axes, not just gravity. Two independent
+        # research passes converged on this: PointMLP never normalizes at all
+        # and reaches 83.8 at 0.68M, and openpoints exposes the same idea as
+        # PointCloudCenterAndNormalize(append_xyz=True). Our single largest
+        # gain (+4.8) came from restoring absolute size on one axis; this
+        # restores it on three.
+        #
+        # It must be built from the AUGMENTED points, not the raw ones. Height
+        # got away with using raw y because rotation about y leaves y alone,
+        # but x and z do change -- appending unrotated offsets beside rotated
+        # geometry would feed the model two contradictory frames. Multiplying
+        # the augmented cloud by the normalization radius undoes exactly the
+        # scale that normalization removed, in the rotated frame.
+        centred = raw_xyz - raw_xyz.mean(axis=0, keepdims=True)
+        radius = max(float(np.linalg.norm(centred, axis=-1).max()), 1e-8)
+        absolute = augmented_points[:, :3] * radius
+        return absolute - absolute.min(axis=0, keepdims=True)
     raise ValueError(f"unknown height_mode {mode!r}; expected one of {HEIGHT_MODES}")
 
 
@@ -158,7 +176,7 @@ def prepare_train_sample(raw_points, rng, ordering, fixed_perm=None,
         # leaving height unscaled would feed the model a height that
         # contradicts the geometry beside it.
         points = np.concatenate(
-            [points, _height_feature(height, points, scale, height_mode)],
+            [points, _height_feature(height, points, scale, height_mode, selected)],
             axis=-1,
         )
     # Ordering must come after augmentation: rotation changes Morton codes.
@@ -176,7 +194,7 @@ def prepare_eval_sample(raw_points, subsample_idx, ordering, fixed_perm=None,
         # evaluation applies no augmentation. Using a different definition
         # here than in training would be a silent train/eval mismatch.
         points = np.concatenate(
-            [points, _height_feature(height, points, 1.0, height_mode)], axis=-1
+            [points, _height_feature(height, points, 1.0, height_mode, selected)], axis=-1
         )
     return apply_order(points, ordering, fixed_perm).astype(np.float32)
 
