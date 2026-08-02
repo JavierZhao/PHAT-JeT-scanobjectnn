@@ -349,6 +349,56 @@ first incident) copies each run's metrics.json to metrics.snapshot.json every
 relaunching into the same output directory safe: a fresh run starting at epoch 0
 cannot regress the snapshot.
 
+## Hierarchy and receptive field — experiment design (running)
+
+Motivated by the pattern that capacity buys almost nothing (17× params → +2.2,
+and with height the ladder is flat to inverted) while information-side changes
+buy a lot (+8.4 grid resolution, +4.8 height). PointNeXt names two mechanisms
+for its lead — an appropriate neighbourhood radius, and a hierarchical
+architecture — and the 3D PHAT model has neither.
+
+All arms run at config M, δ\*=0.09375, with height on, against the **80.46**
+height baseline, so any gain stacks on height rather than confounding with it.
+2 seeds each.
+
+### Receptive field, two separable mechanisms
+
+Phase D varied the *local-attention window* (patch 16→128) and found nothing —
+but that is not GMP's receptive field, and GMP is where geometry enters. Two
+distinct axes:
+
+| axis | knob | why it was untested |
+|---|---|---|
+| voxel **resolution** | δ | swept; optimum 0.09375, bracketed |
+| voxel **extent** | GMP kernel size | never varied — hardcoded 3×3×3 |
+
+δ is a confound: changing it moves resolution *and* extent together, which is
+why the δ sweep cannot answer the receptive-field question. Kernel size is the
+only knob that isolates extent.
+
+- `rf-kernel5` — 5×5×5, extent ±0.188 (from ±0.094)
+- `rf-kernel7` — 7×7×7, extent ±0.281
+
+### Hierarchy
+
+`GeometricPooling3D` restores the jet model's between-stage pooling (dropped
+when the 3D ladder was flattened), halving the point count at the midpoint.
+Points are Morton-ordered, so consecutive groups are already spatially
+coherent — verified: Morton pair spread is under half random pair spread.
+
+- `ds2-none` — downsample, δ fixed. **The ablation**: isolates hierarchy from
+  receptive-field growth.
+- `ds2-density` — δ × stride^(1/3), keeping points-per-voxel constant.
+- `ds2-double` — δ × 2, PointNeXt's literal "radius doubles when downsampled".
+- `coarse-pool2` — a parallel coarse path at full resolution (Codex's design;
+  adds multi-scale context but costs compute rather than saving it).
+
+Without `ds2-none`, a win from `ds2-density` could not be attributed to
+hierarchy versus radius growth. That pairing is the point of the design.
+
+Params at config M: baseline 1,214,479; +downsampling 1,231,247; kernel 5
+1,264,655; kernel 7 1,376,271.
+
 ## Subagent note
 
 The Codex task that authored the rotation fix wedged after completing its work:
