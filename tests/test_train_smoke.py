@@ -103,10 +103,12 @@ def test_current_recipe_defaults_are_the_historical_values():
     args = train_mod.parse_args(["--data_dir", "unused", "--out", "unused"])
     assert vars(args) == {
         "data_dir": "unused", "out": "unused", "config": "S", "delta": 0.25,
-        "gmp": "on", "ordering": "morton", "patch_size": None, "seed": 0,
+        "gmp": "on", "gmp_variant": "dense", "ordering": "morton",
+        "patch_size": None, "shifted_patches": False,
+        "hierarchy_pool_size": None, "hierarchy_after_block": None, "seed": 0,
         "recipe": "current", "epochs": 250, "batch_size": 32, "lr": 1e-3,
         "weight_decay": 0.05, "warmup_epochs": 10, "label_smoothing": 0.2,
-        "height_append": False, "val_fraction": 0.1,
+        "height_append": False, "height_mode": "raw", "val_fraction": 0.1,
     }
 
 

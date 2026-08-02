@@ -129,3 +129,31 @@ def test_gmp_variant_is_threaded_through_classifier(gmp_variant):
     )
     out = model(tf.zeros([2, 64, 3]), training=False)
     assert out.shape == (2, NUM_CLASSES)
+
+
+def test_shifted_patches_is_opt_in_zero_parameter_receptive_field_change():
+    base = build_phat_sonn_classifier(config="M", num_points=128, patch_size=32)
+    shifted = build_phat_sonn_classifier(
+        config="M", num_points=128, patch_size=32, shifted_patches=True
+    )
+    assert shifted.count_params() == base.count_params()
+    assert shifted.get_layer("phat_block3d_0").patch_shift == 0
+    assert shifted.get_layer("phat_block3d_1").patch_shift == 16
+    assert shifted(tf.zeros([2, 128, 3])).shape == (2, NUM_CLASSES)
+
+
+def test_coarse_phat_path_is_opt_in_and_preserves_point_shape():
+    base = build_phat_sonn_classifier(config="XS", num_points=128)
+    hierarchical = build_phat_sonn_classifier(
+        config="XS", num_points=128, hierarchy_pool_size=4
+    )
+    assert hierarchical.count_params() > base.count_params()
+    assert hierarchical.get_layer("coarse_phat_path").pool_size == 4
+    assert hierarchical(tf.zeros([2, 128, 3])).shape == (2, NUM_CLASSES)
+
+
+def test_invalid_hierarchy_shape_is_rejected():
+    with pytest.raises(ValueError, match="hierarchy pooling"):
+        build_phat_sonn_classifier(
+            config="XS", num_points=130, hierarchy_pool_size=4
+        )

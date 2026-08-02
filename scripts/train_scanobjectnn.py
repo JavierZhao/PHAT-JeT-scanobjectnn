@@ -56,6 +56,22 @@ def parse_args(argv=None):
     p.add_argument("--delta", type=float, default=0.25, help="GMP voxel edge length")
     p.add_argument("--gmp", choices=["on", "off"], default="on")
     p.add_argument(
+        "--downsample_stride", type=int, default=None,
+        help="TRUE hierarchy: reduce the point count by this factor at the "
+             "model midpoint, as the jet model's GeometricPooling did. Distinct "
+             "from --hierarchy_pool_size, which keeps full resolution.",
+    )
+    p.add_argument(
+        "--delta_growth", choices=["density", "double", "none"], default="density",
+        help="How the GMP voxel grows after downsampling. 'none' isolates "
+             "hierarchy from receptive-field scaling.",
+    )
+    p.add_argument(
+        "--gmp_kernel", type=int, default=3,
+        help="GMP convolution kernel size -- the GMP spatial extent, "
+             "independent of delta (which sets resolution).",
+    )
+    p.add_argument(
         "--gmp_variant",
         choices=["dense", "sparse", "sparse_mean", "sparse_trilinear"],
         default="dense",
@@ -67,6 +83,18 @@ def parse_args(argv=None):
     p.add_argument(
         "--patch_size", type=int, default=None,
         help="override the config's patch size (Phase D)",
+    )
+    p.add_argument(
+        "--shifted_patches", action="store_true",
+        help="shift odd PHAT blocks by half a patch to overlap neighbourhoods",
+    )
+    p.add_argument(
+        "--hierarchy_pool_size", type=int, default=None,
+        help="enable one coarse PHAT path by pooling this many adjacent points",
+    )
+    p.add_argument(
+        "--hierarchy_after_block", type=int, default=None,
+        help="zero-based block after which to insert the coarse path (default: midpoint)",
     )
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--recipe", choices=RECIPE_DEFAULTS, default="current")
@@ -229,6 +257,12 @@ def build_classifier(args):
         use_gmp=(args.gmp == "on"),
         gmp_variant=args.gmp_variant,
         patch_size=args.patch_size,
+        shifted_patches=args.shifted_patches,
+        hierarchy_pool_size=args.hierarchy_pool_size,
+        downsample_stride=args.downsample_stride,
+        delta_growth=args.delta_growth,
+        gmp_kernel=args.gmp_kernel,
+        hierarchy_after_block=args.hierarchy_after_block,
     )
     if not args.height_append:
         return base
@@ -241,6 +275,8 @@ def build_classifier(args):
     x = tf.keras.layers.Dense(embedding.units, name="input_embedding")(features)
     for layer in base.layers:
         if layer.name.startswith("phat_block3d_"):
+            x, coords = layer([x, coords])
+        elif layer.name == "coarse_phat_path":
             x, coords = layer([x, coords])
     x = base.get_layer("global_mean_pool")(x)
     x = base.get_layer("head_hidden")(x)
