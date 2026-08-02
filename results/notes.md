@@ -258,6 +258,34 @@ ideally three seeds, are needed before any sparse number goes in the paper. The
 δ=0.03125 and δ=0.015625 results depend entirely on this correctness, so they
 stay provisional until parity is confirmed end to end.
 
+## Height appending — early result with a control (config M, δ=0.09375)
+
+Test OA at matched epochs. Baseline is the completed 3-seed no-height run.
+
+| arm | ep 9 | ep 19 |
+|---|---|---|
+| baseline, no height (s0/s1/s2) | 0.5850 / 0.5600 / 0.5895 | 0.6412 / 0.6412 / 0.6402 |
+| height = **raw** | **0.6780** | **0.7040** |
+| height = **shifted** | **0.6881** | 0.6870 |
+| height = **unit** (CONTROL) | 0.6103 | 0.6468 |
+
+The control is the load-bearing part. `unit` appends the normalized y channel —
+a feature the model already has — so it isolates "an extra input channel" from
+"absolute size information". It lands near baseline (+3.2 at ep 9, +0.6 at
+ep 19), while raw and shifted are **+6 to +11 points ahead**. So the gain comes
+from the information, not from widening the input embedding.
+
+Interpretation: unit-sphere normalization destroys absolute object size, and
+size is strongly discriminative among ScanObjectNN's furniture categories (a
+chair, a table and a cabinet differ as much in metres as in shape). Height
+appending restores exactly that.
+
+**Caveats.** One seed per height arm against three baseline seeds, and only
+19 of 250 epochs. Early-epoch gaps routinely compress as baselines converge, so
+this is not yet a headline number — PointNeXt reported only +1.1 OA for height
+appending at convergence. But the direction is clear and the control makes it
+interpretable.
+
 ## Published baselines — VERIFIED against original papers
 
 Checked directly against the source PDFs (not from memory, per the handoff).
