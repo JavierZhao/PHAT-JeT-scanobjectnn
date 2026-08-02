@@ -70,6 +70,12 @@ def parse_args(argv=None):
     )
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--recipe", choices=RECIPE_DEFAULTS, default="current")
+    p.add_argument(
+        "--height_mode", choices=["raw", "shifted", "unit"], default="raw",
+        help="Appended-height definition: raw centred height, shifted above "
+             "the object base, or unit (normalized y -- a control that adds "
+             "no information beyond xyz).",
+    )
     p.add_argument("--epochs", type=int, default=None)
     p.add_argument("--batch_size", type=int, default=None)
     p.add_argument("--lr", type=float, default=None)
@@ -119,7 +125,8 @@ def make_train_epoch(points, labels, args, fixed_perm, epoch):
     order = rng.permutation(points.shape[0])
     batch = np.stack(
         [prepare_train_sample(points[i], rng, args.ordering, fixed_perm,
-                              height_append=args.height_append)
+                              height_append=args.height_append,
+                              height_mode=args.height_mode)
          for i in order]
     )
     one_hot = np.eye(NUM_CLASSES, dtype=np.float32)[labels[order]]
@@ -132,7 +139,8 @@ def make_eval_arrays(points, labels, args, fixed_perm):
     prepared = np.stack(
         [
             prepare_eval_sample(points[i], subsample[i], args.ordering, fixed_perm,
-                                height_append=args.height_append)
+                                height_append=args.height_append,
+                              height_mode=args.height_mode)
             for i in range(points.shape[0])
         ]
     )

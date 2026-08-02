@@ -109,8 +109,40 @@ def apply_order(points, ordering, fixed_perm=None):
 # --------------------------------------------------------------------------
 # Sample-level composition
 # --------------------------------------------------------------------------
+HEIGHT_MODES = ("raw", "shifted", "unit")
+
+
+def _height_feature(raw_height, augmented_points, scale, mode):
+    """Build the appended height channel.
+
+    Measured on the real training split (2000 objects): ScanObjectNN objects
+    are already centred (per-object mean y = -0.000 +/- 0.005), so raw y has
+    std 0.208 against normalized xyz at 0.321 -- comparable magnitude, not a
+    conditioning problem. Because centring is already done, the extra
+    information raw height carries over normalized xyz is precisely the
+    object's absolute scale, which is what PointNeXt intends by "aware of the
+    actual size".
+
+    Modes:
+      raw     -- centred absolute height, scaled with the augmentation.
+      shifted -- height above the object's own lowest point (non-negative),
+                 the openpoints-style formulation. Real std 0.277.
+      unit    -- the normalized y channel itself. This is a CONTROL: it adds
+                 no information beyond xyz, so if it matches `raw` then the
+                 height feature contributes nothing.
+    """
+    if mode == "raw":
+        return raw_height * scale
+    if mode == "shifted":
+        return (raw_height - raw_height.min()) * scale
+    if mode == "unit":
+        return augmented_points[:, 1:2]
+    raise ValueError(f"unknown height_mode {mode!r}; expected one of {HEIGHT_MODES}")
+
+
 def prepare_train_sample(raw_points, rng, ordering, fixed_perm=None,
-                         num_points=NUM_POINTS, height_append=False):
+                         num_points=NUM_POINTS, height_append=False,
+                         height_mode="raw"):
     """Resample -> normalize -> augment -> order. raw_points: [2048, 3]."""
     idx = rng.choice(raw_points.shape[0], size=num_points, replace=False)
     selected = raw_points[idx].astype(np.float32)
@@ -125,19 +157,27 @@ def prepare_train_sample(raw_points, rng, ordering, fixed_perm=None,
         # simulates a differently sized object, so its height changes too;
         # leaving height unscaled would feed the model a height that
         # contradicts the geometry beside it.
-        points = np.concatenate([points, height * scale], axis=-1)
+        points = np.concatenate(
+            [points, _height_feature(height, points, scale, height_mode)],
+            axis=-1,
+        )
     # Ordering must come after augmentation: rotation changes Morton codes.
     return apply_order(points, ordering, fixed_perm).astype(np.float32)
 
 
 def prepare_eval_sample(raw_points, subsample_idx, ordering, fixed_perm=None,
-                        height_append=False):
+                        height_append=False, height_mode="raw"):
     """Fixed subsample -> normalize -> order. No augmentation, no voting."""
     selected = raw_points[subsample_idx].astype(np.float32)
     height = selected[:, 1:2]
     points = normalize_unit_sphere(selected)
     if height_append:
-        points = np.concatenate([points, height], axis=-1)
+        # Same height definition as training, with scale factor 1.0 since
+        # evaluation applies no augmentation. Using a different definition
+        # here than in training would be a silent train/eval mismatch.
+        points = np.concatenate(
+            [points, _height_feature(height, points, 1.0, height_mode)], axis=-1
+        )
     return apply_order(points, ordering, fixed_perm).astype(np.float32)
 
 
