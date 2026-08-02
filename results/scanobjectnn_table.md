@@ -13,43 +13,48 @@ row is PB_T50_RS, the hardest variant.
 | Method | #Params | OA (%) | mAcc (%) |
 |---|---|---|---|
 | PointNet [1,2] | 3.5M | 68.2 | 63.4 |
-| **PHAT-JeT-XS** (δ=0.09375) | **0.157M** | **74.96 ± 0.82** | **70.74 ± 0.85** |
-| **PHAT-JeT-S** (δ=0.09375) | **0.612M** | **75.78 ± 0.55** | **71.45 ± 0.53** |
-| **PHAT-JeT-M** (δ=0.09375) | **1.214M** | **77.02 ± 0.80** | **73.01 ± 1.02** |
-| **PHAT-JeT-L** (δ=0.09375) | **2.713M** | **77.15 ± 0.25** | **73.24 ± 0.27** |
+| **PHAT-JeT-XS** (δ*, no height) | **0.157M** | **74.96 ± 0.82** | **70.74 ± 0.85** |
+| **PHAT-JeT-S** (δ*, no height) | **0.612M** | **75.78 ± 0.55** | **71.45 ± 0.53** |
+| **PHAT-JeT-M** (δ*, no height) | **1.214M** | **77.02 ± 0.80** | **73.01 ± 1.02** |
+| **PHAT-JeT-L** (δ*, no height) | **2.713M** | **77.15 ± 0.25** | **73.24 ± 0.27** |
 | PointNet++ [1,2] | 1.5M | 77.9 | 75.4 |
 | DGCNN [1,2] | 1.8M | 78.1 | 73.6 |
 | PointCNN [1] | 0.6M | 78.5 | 75.1 |
 | BGA-DGCNN [2] | — | 79.7 | 75.7 |
+| **PHAT-JeT-L + height** | **2.713M** | **79.69 ± 1.21** | **76.58** |
+| **PHAT-JeT-XS + height** | **0.157M** | **80.00 ± 0.25** | **77.08** |
+| **PHAT-JeT-M + height** | **1.214M** | **80.46 ± 0.71** | **77.15** |
 | SimpleView [1,2] | 0.8M | 80.5 ± 0.3 | — |
+| **PHAT-JeT-S + height** | **0.612M** | **80.55 ± 0.29** | **77.23** |
 | MVTN [1] | 3.5M | 82.8 | — |
 | PointMLP-elite [2] | 0.68M | 83.8 ± 0.6 | 81.8 ± 0.8 |
 | PointMLP [1] | 13.2M | 85.4 ± 1.3 | 83.9 ± 1.5 |
 | PointNet++ *w/ PointNeXt training* [1] | 1.5M | 86.1 ± 0.7 | 84.2 ± 0.9 |
 | PointNeXt-S [1] | 1.4M | 87.7 ± 0.4 | 85.8 ± 0.6 |
 
-† 3 seeds truncated at 192–196/250 epochs by a host-memory bug; rerunning.
-‡ 2 seeds only (third launched). Both are near-final but not protocol-clean.
+All PHAT-JeT rows are 3 seeds at 250 epochs. "+ height" appends the object's
+height above its own base as a 4th input feature (§3d); everything else is
+identical.
 
 ### Honest assessment
 
-- PHAT-JeT clearly beats **PointNet**: XS is +6.9 OA with **22× fewer
-  parameters**.
-- PHAT-JeT-L sits just below **PointNet++** and **DGCNN**, using more parameters
-  than either.
-- At matched budget the comparison is unfavourable: **PointMLP-elite reaches
-  83.8 at 0.68M, versus our 75.8 at 0.61M — an 8-point deficit.**
-- Against the plan's success criteria this is the **"acceptable outcome"**
-  (competitive but behind), not the good one. The supported claim is *the
-  components transfer*, not *SOTA-competitive*.
+- **Best result: PHAT-JeT-S + height, 80.55 ± 0.29 at 0.612M parameters.** That
+  matches SimpleView (80.5 at 0.8M) with 24% fewer parameters, and beats
+  PointNet++ (77.9), DGCNN (78.1), PointCNN (78.5) and BGA-DGCNN (79.7).
+- Against PointNet the efficiency claim is strong: **XS + height is +11.8 OA
+  with 22× fewer parameters**.
+- It remains **3.2 behind PointMLP-elite** (83.8 at 0.68M) at matched budget,
+  and 7.2 behind PointNeXt-S.
+- Against the plan's success criteria this sits between the two defined
+  outcomes: better than "competitive but behind", short of "within striking
+  distance of PointMLP-elite/PointNeXt-S".
 
 **Essential caveat.** PointNeXt [1] shows PointNet++ gains **+8.2 OA
-(77.9 → 86.1) from training strategy alone, with no architecture change**. Our
-recipe is deliberately plain, and PHAT-JeT-L's 77.2 sits almost exactly at the
-level of *original-recipe* PointNet++ (77.9) and DGCNN (78.1) rather than at the
-level of modern-recipe results. The gap to PointNeXt-S is therefore **not
-demonstrably architectural**. A training-recipe experiment is in progress; until
-it reports, no architectural conclusion should be drawn from this table.
+(77.9 → 86.1) from training strategy alone, with no architecture change**. We
+have closed part of that kind of gap ourselves (+4.8 from one input feature),
+which is direct evidence that the remaining difference is **not demonstrably
+architectural**. No architectural conclusion should be drawn from this table
+without first exhausting training and input-representation changes.
 
 ## 2. Ablation — GMP and grid resolution (config S, 3 seeds)
 
@@ -145,6 +150,67 @@ three-seed spread of the dense baseline (76.20–78.11). Consequently:
   that noise and is established.
 
 Any arm intended for the paper needs three seeds. These are one seed each.
+
+## 3d. FINAL height results — the gain shrinks as capacity grows
+
+3 seeds, 250 epochs, δ=0.09375, `shifted` height.
+
+| Config | Params | no height | **+ height** | gain |
+|---|---|---|---|---|
+| XS | 0.157M | 74.96 ± 0.82 | **80.00 ± 0.25** | **+5.0** |
+| S | 0.612M | 75.78 ± 0.55 | **80.55 ± 0.29** | **+4.8** |
+| M | 1.214M | 77.02 ± 0.80 | **80.46 ± 0.71** | **+3.4** |
+| L | 2.713M | 77.15 ± 0.25 | **79.69 ± 1.21** | **+2.5** |
+
+Two things fall out:
+
+1. **The benefit is inversely proportional to capacity** (+5.0 at XS down to
+   +2.5 at L). Absolute size information *substitutes* for model capacity — a
+   small model given the right information matches a 17× larger one denied it.
+2. **With height the ladder is completely flat, even slightly inverted**:
+   XS 80.00, S 80.55, M 80.46, L 79.69. Scaling now buys nothing at all. The
+   earlier flat-scaling finding was not a quirk; the architecture genuinely
+   saturates, and once the information gap is closed it saturates immediately.
+
+`raw` vs `shifted` at config M: 79.61 ± 0.15 vs 80.46 ± 0.71. Shifted is ahead
+by 0.85, roughly one standard deviation — suggestive, **not** established.
+
+**Best configuration: PHAT-JeT-S + height, 80.55 ± 0.29 OA at 0.612M params.**
+That matches SimpleView (80.5 at 0.8M) with 24% fewer parameters, and beats
+PointNet++ (77.9), DGCNN (78.1), PointCNN (78.5) and BGA-DGCNN (79.7).
+It remains 3.2 behind PointMLP-elite (83.8 at 0.68M).
+
+## 3e. Phase D — patch size does NOT help (config M, δ\*, 2 seeds)
+
+| Patch size P | test OA |
+|---|---|
+| 16 | 77.35 |
+| 32 (default) | 77.02 (3 seeds) |
+| 64 | 76.63 |
+| 128 | 76.41 |
+
+Enlarging the local-attention window makes things slightly *worse*, and the
+whole range spans 0.94 points — within seed noise.
+
+This is evidence **against** the hypothesis that local receptive field limits
+the model. It was the leading explanation for the remaining gap to PointNeXt,
+and the pre-registered patch sweep does not support it. Whatever hierarchy
+buys, it is unlikely to be simply "each token sees more neighbours".
+
+## 3f. Phase C — ordering robustness (config M, δ\*, 3 seeds)
+
+| Ordering | test OA | mAcc |
+|---|---|---|
+| Morton | 77.02 ± 0.80 | 73.01 |
+| fixed random | 76.38 ± 0.51 | 72.66 |
+
+Morton is ahead by 0.64 points, consistent in direction but within about one
+standard deviation. The transfer analogue of the paper's Table 5: the model is
+**largely robust to point ordering**, needing only that the ordering be
+consistent between train and test. Notably, destroying spatial coherence in the
+patches costs well under a point, which further undercuts the receptive-field
+explanation — if patch contents barely matter, patch geometry is not the
+bottleneck.
 
 ## 4. Sources for baseline numbers
 
