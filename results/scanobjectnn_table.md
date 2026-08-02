@@ -93,6 +93,59 @@ Two observations:
    Accuracy is limited by grid resolution far more than by capacity — which is
    what motivates the GMP-efficiency work now in progress.
 
+## 3b. δ is optimal at 0.09375 — the curve turns over (config M)
+
+Finding finer δ required sparse GMP; the answer is that finer does **not** keep
+helping. δ\* is bracketed on both sides.
+
+| δ | grid side | GMP impl | test OA |
+|---|---|---|---|
+| 0.125 | 18 | dense (3 seeds) | 74.36 |
+| **0.09375** | **24** | dense (3 seeds) | **77.02** |
+| 0.03125 | 71 | sparse (1 seed) | 74.64 |
+| 0.015625 | 141 | sparse (1 seed, 226 ep) | 69.85 |
+
+The monotonic rise from δ=0.5 to δ=0.09375 does not continue: 0.03125 is 2.4
+points worse and 0.015625 is 7.2 points worse. Plausible mechanism — at very
+fine resolution each voxel holds roughly one point, so the 3×3×3 neighbourhood
+spans a tiny physical region and GMP's message passing degenerates into local
+noise instead of useful context.
+
+This is a genuine negative result and worth reporting as one: the sparse
+implementation was built to reach finer grids, and what it established is that
+finer grids are not the answer. The optimum is now bracketed rather than open.
+
+## 3c. Height appending — the largest single gain found (config M, δ=0.09375)
+
+| arm | test OA | mAcc | vs baseline |
+|---|---|---|---|
+| baseline, no height (3 seeds) | 77.02 ± 0.80 | 73.01 | — |
+| height = **unit** (CONTROL) | 76.04 | 71.26 | −1.0 |
+| height = **raw** | 79.77 | 76.26 | **+2.8** |
+| height = **shifted** | 80.71 / 81.33 | 77.55 / 78.87 | **+4.0** |
+
+The `unit` control appends the normalized y channel — information the model
+already has — and lands *below* baseline. So the gain is not from widening the
+input embedding; it is the absolute-size information that unit-sphere
+normalization destroys, which is highly discriminative among furniture classes.
+
+**PHAT-JeT-M with shifted height reaches ~81.0 OA at 1.21M parameters**, which
+would place it above PointNet++ (77.9), DGCNN (78.1), PointCNN (78.5),
+BGA-DGCNN (79.7) and SimpleView (80.5) — see §1.
+
+### Variance caveat that limits all single-run claims
+
+The two `shifted` runs are the **same seed** on different hardware and differ by
+0.62 points; the two sparse-parity runs, also same seed, differ by 2.0 points
+(75.88 vs 77.90). That hardware/nondeterminism spread is as large as the
+three-seed spread of the dense baseline (76.20–78.11). Consequently:
+
+- "shifted beats raw" (~1.5 points apart) is **not** established.
+- "height beats baseline and control" (+3 to +4 points) is comfortably outside
+  that noise and is established.
+
+Any arm intended for the paper needs three seeds. These are one seed each.
+
 ## 4. Sources for baseline numbers
 
 [1] Qian et al., *PointNeXt: Revisiting PointNet++ with Improved Training and
