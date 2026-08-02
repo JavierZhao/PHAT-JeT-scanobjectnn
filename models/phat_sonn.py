@@ -178,6 +178,10 @@ def build_phat_sonn_classifier(
     downsample_stride=None,
     delta_growth="density",
     gmp_kernel=3,
+    pool="mean",
+    head_dropout=0.0,
+    head_width=None,
+    final_norm=False,
 ):
     """Build the point-cloud classifier.
 
@@ -282,8 +286,32 @@ def build_phat_sonn_classifier(
                 grid_size, stage=1, stride=downsample_stride, growth=delta_growth
             )
 
-    x = layers.GlobalAveragePooling1D(name="global_mean_pool")(x)
-    x = layers.Dense(d_model // 2, activation="relu", name="head_hidden")(x)
+    # Pre-LN trunks need a final normalization before the head: without it the
+    # residual stream's scale grows with the number of branches, so deeper
+    # configs hand the head a differently-scaled descriptor (Xiong et al. 2020).
+    if final_norm:
+        x = layers.LayerNormalization(epsilon=1e-6, name="final_norm")(x)
+
+    # The jet model pooled with max (build_phat_jet_classifier aggregation=
+    # "max"); the 3D port silently switched to mean. PointNet measured max as
+    # beating average "by a large winning margin", and mean over 1024 tokens
+    # attenuates any feature active on a minority of points by ~1/N -- exactly
+    # the extremal signals our two biggest gains were about.
+    if pool == "max":
+        x = layers.GlobalMaxPooling1D(name="global_pool")(x)
+    elif pool == "maxmean":
+        x = layers.Concatenate(name="global_pool")(
+            [layers.GlobalMaxPooling1D()(x), layers.GlobalAveragePooling1D()(x)]
+        )
+    elif pool == "mean":
+        x = layers.GlobalAveragePooling1D(name="global_mean_pool")(x)
+    else:
+        raise ValueError(f"unknown pool {pool!r}; expected mean, max or maxmean")
+
+    width = head_width if head_width is not None else d_model // 2
+    x = layers.Dense(width, activation="relu", name="head_hidden")(x)
+    if head_dropout:
+        x = layers.Dropout(head_dropout, name="head_dropout")(x)
     if dropout:
         x = layers.Dropout(dropout)(x)
     # Logits: the loss applies softmax (from_logits=True) so label smoothing is

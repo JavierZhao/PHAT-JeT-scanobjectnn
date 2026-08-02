@@ -129,6 +129,18 @@ def parse_args(argv=None):
         "--height_append", action=argparse.BooleanOptionalAction, default=None,
         help="append raw y height as a fourth per-point input feature",
     )
+    p.add_argument("--dropout", type=float, default=0.0,
+                   help="dropout inside PHAT blocks. Never exposed before, so "
+                        "every run to date used 0.0 -- the model has had no "
+                        "regularization beyond weight decay and label smoothing.")
+    p.add_argument("--pool", choices=["mean", "max", "maxmean"], default="mean",
+                   help="global readout. The jet model used max; the 3D port "
+                        "defaulted to mean.")
+    p.add_argument("--head_dropout", type=float, default=0.0)
+    p.add_argument("--head_width", type=int, default=None,
+                   help="head hidden width; defaults to d_model//2")
+    p.add_argument("--final_norm", action="store_true",
+                   help="LayerNorm before the head (pre-LN trunks need it)")
     p.add_argument("--min_lr", type=float, default=None,
                    help="cosine floor; the schedule holds here after decay_epochs")
     p.add_argument("--decay_epochs", type=int, default=None,
@@ -283,6 +295,11 @@ def build_classifier(args):
         downsample_stride=args.downsample_stride,
         delta_growth=args.delta_growth,
         gmp_kernel=args.gmp_kernel,
+        dropout=args.dropout,
+        pool=args.pool,
+        head_dropout=args.head_dropout,
+        head_width=args.head_width,
+        final_norm=args.final_norm,
         hierarchy_after_block=args.hierarchy_after_block,
     )
     if not args.height_append:
