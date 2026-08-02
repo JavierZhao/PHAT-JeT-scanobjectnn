@@ -229,9 +229,34 @@ finer grids prohibitive, so we never found the optimum. Sparse GMP converts
 optimum reachable. The dense path remains the default so all completed runs stay
 reproducible.
 
-Caveat not yet closed: equivalence is verified numerically on small inputs and
-in unit tests, but no full sparse training run has completed yet. Accuracy
-parity on a real run must be confirmed before any sparse result is reported.
+### Parity on real data — interim evidence (config M, δ=0.09375)
+
+A sparse run at settings identical to three completed dense seeds tracks them
+within seed noise at every checkpoint:
+
+| epoch | sparse | dense s0 | dense s1 | dense s2 |
+|---|---|---|---|---|
+| 9 | 0.6072 | 0.5850 | 0.5600 | 0.5895 |
+| 19 | 0.6596 | 0.6412 | 0.6412 | 0.6402 |
+| 29 | 0.6756 | 0.6724 | 0.6773 | 0.6811 |
+| 39 | 0.6822 | 0.6960 | 0.7037 | 0.6947 |
+| 49 | 0.7047 | 0.7054 | 0.7179 | 0.7165 |
+| 59 | 0.7203 | 0.7287 | 0.7099 | 0.7283 |
+| 65 | 0.7276 | 0.7127 | 0.7051 | 0.7342 |
+
+Sparse is above the dense band early, below it in the middle, and inside it
+late — i.e. no systematic divergence, which is what numerical equivalence plus
+different floating-point accumulation order should look like. (Bit-identity is
+not expected: the runs differ in accumulation order.)
+
+Wall clock: **sparse 42.0 s/epoch vs dense 48.1–48.5** — already ~13% faster at
+grid side 24, where the dense grid is still small. The advantage grows with
+resolution (44× at δ=0.03125 on CPU).
+
+Caveat not yet closed: this is one seed at 67/250 epochs. A completed run, and
+ideally three seeds, are needed before any sparse number goes in the paper. The
+δ=0.03125 and δ=0.015625 results depend entirely on this correctness, so they
+stay provisional until parity is confirmed end to end.
 
 ## Published baselines — VERIFIED against original papers
 
