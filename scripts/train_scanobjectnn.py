@@ -44,7 +44,22 @@ RECIPE_DEFAULTS = {
                     height_append=False),
     "pointnext": dict(epochs=250, batch_size=32, lr=1e-3, weight_decay=0.05,
                       warmup_epochs=0, label_smoothing=0.2,
-                      height_append=True),
+                      height_append=True, min_lr=1e-5, decay_epochs=None,
+                      grad_clip=None),
+    # Faithful to cfgs/scanobjectnn/default.yaml in the released PointNeXt
+    # repo, which differs from the paper body in several places:
+    #   lr 2e-3 (paper text says 1e-3 "unless otherwise specified"; the
+    #     ScanObjectNN config is the otherwise)
+    #   label_smoothing 0.32143 -- their epsilon is 0.3, but openpoints puts
+    #     the true target at 1-eps while Keras puts it at (1-a)+a/K, so
+    #     a = eps*K/(K-1) = 0.3*15/14 is what reproduces it at K=15
+    #   cosine decays to min_lr 1e-4 over t_max=200, then holds constant for
+    #     the final 50 epochs
+    #   grad_norm_clip 10 (global norm, not per-variable)
+    "pointnext_v2": dict(epochs=250, batch_size=32, lr=2e-3, weight_decay=0.05,
+                         warmup_epochs=0, label_smoothing=0.32143,
+                         height_append=True, min_lr=1e-4, decay_epochs=200,
+                         grad_clip=10.0),
 }
 
 
@@ -114,6 +129,12 @@ def parse_args(argv=None):
         "--height_append", action=argparse.BooleanOptionalAction, default=None,
         help="append raw y height as a fourth per-point input feature",
     )
+    p.add_argument("--min_lr", type=float, default=None,
+                   help="cosine floor; the schedule holds here after decay_epochs")
+    p.add_argument("--decay_epochs", type=int, default=None,
+                   help="cosine decay length; defaults to the full run")
+    p.add_argument("--grad_clip", type=float, default=None,
+                   help="global gradient-norm clip (Keras global_clipnorm)")
     p.add_argument("--val_fraction", type=float, default=0.1)
     args = p.parse_args(argv)
     for name, value in RECIPE_DEFAULTS[args.recipe].items():
@@ -392,17 +413,25 @@ def main():
     model = build_classifier(args)
 
     steps_per_epoch = int(np.ceil(len(train_idx) / args.batch_size))
+    # Keras CosineDecay clamps to alpha*initial past decay_steps, so a
+    # decay_epochs shorter than epochs reproduces PointNeXt's constant-LR
+    # anneal-out over the final stretch.
+    decay_epochs = args.decay_epochs or args.epochs
+    min_lr = args.min_lr if args.min_lr is not None else 1e-5
     schedule = tf.keras.optimizers.schedules.CosineDecay(
         initial_learning_rate=0.0,
-        decay_steps=max(1, (args.epochs - args.warmup_epochs) * steps_per_epoch),
-        alpha=1e-5 / args.lr,
+        decay_steps=max(1, (decay_epochs - args.warmup_epochs) * steps_per_epoch),
+        alpha=min_lr / args.lr,
         warmup_target=args.lr,
         warmup_steps=args.warmup_epochs * steps_per_epoch,
     )
+    optimizer_kwargs = dict(learning_rate=schedule, weight_decay=args.weight_decay)
+    if args.grad_clip:
+        # global_clipnorm clips the whole gradient vector, matching torch's
+        # clip_grad_norm_. Keras `clipnorm` is per-variable and is NOT the same.
+        optimizer_kwargs["global_clipnorm"] = args.grad_clip
     model.compile(
-        optimizer=tf.keras.optimizers.AdamW(
-            learning_rate=schedule, weight_decay=args.weight_decay
-        ),
+        optimizer=tf.keras.optimizers.AdamW(**optimizer_kwargs),
         loss=tf.keras.losses.CategoricalCrossentropy(
             from_logits=True, label_smoothing=args.label_smoothing
         ),
