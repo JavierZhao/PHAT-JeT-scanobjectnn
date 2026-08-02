@@ -1,0 +1,84 @@
+# Rendered by gen_jobs.py -- do not apply directly, the braced fields are
+# substituted per run. Adapted from the group's conv_linformer.yml with the
+# deviations documented in PLAN_scanobjectnn.md section 3.6.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: phatjet-sonn-m-d94-gmpon-morton-p128-s1
+  namespace: cms-ml
+  labels:
+    jobgroup: phatjet-sonn
+    phase: "d"
+spec:
+  parallelism: 1
+  completions: 1
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        jobgroup: phatjet-sonn
+        phase: "d"
+    spec:
+      restartPolicy: Never
+      initContainers:
+      - name: init-clone-repo
+        image: alpine/git
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          git clone --no-checkout https://github.com/JavierZhao/PHAT-JeT-scanobjectnn.git /opt/repo/PHAT-JeT && \
+          cd /opt/repo/PHAT-JeT && \
+          git checkout 32e0ddf0719a3c482066ecc309a9f32c34c90e14 && \
+          chown -R 1000:1000 /opt/repo/PHAT-JeT
+        volumeMounts:
+        - name: git-repo
+          mountPath: /opt/repo
+        resources:
+          requests: {cpu: '1', memory: 1Gi}
+          limits: {cpu: '1', memory: 1Gi}
+      containers:
+      - name: train
+        image: gitlab-registry.nrp-nautilus.io/jmduarte/hbb_interaction_network@sha256:d876f8329b3345f2086e6cb6f70a3811810acdc87b40b6f15ee90c73b281ad1d
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          cd /opt/repo/PHAT-JeT && \
+          python scripts/train_scanobjectnn.py \
+            --data_dir /j-jepa-vol/scanobjectnn/main_split \
+            --out /j-jepa-vol/phatjet-sonn/runs/phatjet-sonn-m-d94-gmpon-morton-p128-s1 \
+            --config M \
+            --delta 0.09375 \
+            --gmp on \
+            --ordering morton \
+            --patch_size 128 \
+            --seed 1
+        env:
+        - name: GIT_SHA
+          value: "32e0ddf0719a3c482066ecc309a9f32c34c90e14"
+        - name: IMAGE_DIGEST
+          value: "gitlab-registry.nrp-nautilus.io/jmduarte/hbb_interaction_network@sha256:d876f8329b3345f2086e6cb6f70a3811810acdc87b40b6f15ee90c73b281ad1d"
+        volumeMounts:
+        - name: git-repo
+          mountPath: /opt/repo
+        - name: j-jepa-vol
+          mountPath: /j-jepa-vol
+        resources:
+          # The cluster enforces limit/request <= 1.2 on both cpu and memory.
+          requests: {cpu: '4', memory: 12Gi, nvidia.com/gpu: 1}
+          limits: {cpu: '4', memory: 14Gi, nvidia.com/gpu: 1}
+      volumes:
+      - name: git-repo
+        emptyDir: {}
+      - name: j-jepa-vol
+        persistentVolumeClaim:
+          claimName: j-jepa-vol
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: nvidia.com/gpu.product
+                operator: In
+                values:
+                - NVIDIA-GeForce-RTX-3090
+                - NVIDIA-GeForce-RTX-4090
