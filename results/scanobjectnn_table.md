@@ -26,6 +26,7 @@ row is PB_T50_RS, the hardest variant.
 | **PHAT-JeT-M + height** | **1.214M** | **80.46 ± 0.71** | **77.15** |
 | SimpleView [1,2] | 0.8M | 80.5 ± 0.3 | — |
 | **PHAT-JeT-S + height** | **0.612M** | **80.55 ± 0.29** | **77.23** |
+| **PHAT-JeT-S + xyz offsets** ★ | **0.612M** | **81.45 ± 0.53** | **78.12** |
 | MVTN [1] | 3.5M | 82.8 | — |
 | PointMLP-elite [2] | 0.68M | 83.8 ± 0.6 | 81.8 ± 0.8 |
 | PointMLP [1] | 13.2M | 85.4 ± 1.3 | 83.9 ± 1.5 |
@@ -373,6 +374,38 @@ validation split is free.
 
 Worth noting: the full-training-set runs have markedly tighter spread
 (±0.13 vs ±0.41), so the extra 10% buys stability rather than accuracy.
+
+## 3m. Final round — combination, multi-scale GMP and reallocation are all null
+
+All complete, config S unless noted, against `xyz_shifted` at 81.45 ± 0.53.
+
+| arm | n | test@best-val | note |
+|---|---|---|---|
+| **xyz_shifted** | 4 | **81.45 ± 0.53** | best configuration found |
+| multi-scale GMP ×3 | 6 | 81.22 ± 0.96 | null, and higher variance |
+| combo xyz + sparse_mean | 6 | 81.01 ± 0.54 | **worse than xyz alone** |
+| GMP-only, config M | 5 | 80.71 ± 0.23 | reallocation does not pay |
+| height baseline | 3 | 80.55 ± 0.29 | — |
+
+Three hypotheses died here, and all three were mine:
+
+1. **The two "winners" do not stack.** `combo` (81.01) is *below* `xyz_shifted`
+   alone (81.45). That is consistent with `sparse_mean` never having been a
+   real gain — it was a partial-run artifact — and combining it costs a little.
+2. **Multi-scale GMP is null.** A parallel bank of voxel resolutions
+   (0.0625 / 0.09375 / 0.125) scores 81.22 ± 0.96, indistinguishable from a
+   single scale and noisier. δ\* being sharply peaked did not mean neighbouring
+   scales carried complementary information.
+3. **Reallocating capacity from attention to GMP does not pay.** Config M with
+   attention stripped (619K params, essentially the same budget as full S at
+   612K, with 4 GMP blocks instead of 2) reaches 80.71 ± 0.23 — below full S
+   with attention. So although attention is worth only ~1 point, spending its
+   parameters on more GMP is worth less. It has the tightest variance of any
+   arm (±0.23), which is the one thing it does buy.
+
+**The gap-closing effort has plateaued.** The trajectory was
+75.78 → 80.55 (height) → 81.45 (three-axis offsets); nothing since has moved it
+outside noise.
 
 ## 4. Sources for baseline numbers
 
