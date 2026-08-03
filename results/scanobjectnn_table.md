@@ -259,6 +259,45 @@ hierarchy or receptive field. The untested candidate with the strongest prior is
 the rest of the training recipe: PointNeXt demonstrated +8.2 OA on PointNet++
 from training strategy alone, and we have so far adopted only one element of it.
 
+## 3h. Gap-closing arms (config S, δ\*, height on) — interim
+
+Against the S + height baseline of **80.55 ± 0.29**. Best available run per arm;
+epoch counts noted where a run is unfinished.
+
+| arm | change | OA | epochs |
+|---|---|---|---|
+| baseline | height (shifted) | 80.55 ± 0.29 | 250, 3 seeds |
+| **`xyzabs`** | absolute offsets on **all three axes** | **82.27** | 250 ✓ |
+| `gmpmean` | occupancy-normalized GMP | 81.68 | 196 |
+| `gmptri` | trilinear sub-voxel position | 80.43 | 143 |
+| `pn2` | PointNeXt's literal recipe settings | **79.08** | 250 ✓ |
+
+**`xyzabs` is the best result of the study.** Extending absolute offsets from
+one axis to three adds **+1.7** on top of height's +4.8. Two independent
+research passes converged on this before it was run.
+
+Every large gain now has the same shape: **restoring information that
+normalization destroyed** (grid resolution +8.4, height +4.8, three-axis
+offsets +1.7). Nothing from capacity or spatial aggregation has ever moved the
+number.
+
+### The PointNeXt recipe is worse for this architecture, not better
+
+`pn2` adopts their released ScanObjectNN settings verbatim — lr 2e-3,
+ε=0.3 (Keras 0.32143), cosine floor 1e-4 over t_max=200, gradient clip 10 —
+and lands **1.5 points below** our existing recipe.
+
+This closes the training-recipe hypothesis from the opposite direction to the
+one expected. Our recipe was already better tuned for this architecture than
+theirs. Combined with the fact that we already matched every item in their
+additive study, the remaining gap to PointNeXt-S is **not** a training-strategy
+gap.
+
+*Caveats: one complete seed for `xyzabs` (its second is at 189/250 tracking
+81.85); `gmpmean` still has 54 epochs to run. Not yet three-seed claims. The
+two arms motivated by the overfitting diagnostic (`poolmax`, `reg`) are only
+5–8 epochs in.*
+
 ## 4. Sources for baseline numbers
 
 [1] Qian et al., *PointNeXt: Revisiting PointNet++ with Improved Training and

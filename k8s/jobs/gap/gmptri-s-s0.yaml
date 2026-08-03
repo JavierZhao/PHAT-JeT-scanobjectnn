@@ -25,7 +25,7 @@ spec:
         - |
           git clone --no-checkout https://github.com/JavierZhao/PHAT-JeT-scanobjectnn.git /opt/repo/PHAT-JeT && \
           cd /opt/repo/PHAT-JeT && \
-          git checkout f4aabfeac03ef265c3a3b8888ebfeb06f10970de && \
+          git checkout 1c8e0ab6ad6507b526f2b43acfc12e3304eb8cff && \
           chown -R 1000:1000 /opt/repo/PHAT-JeT
         volumeMounts:
         - name: git-repo
@@ -54,7 +54,7 @@ spec:
             --seed 0
         env:
         - name: GIT_SHA
-          value: "f4aabfeac03ef265c3a3b8888ebfeb06f10970de"
+          value: "1c8e0ab6ad6507b526f2b43acfc12e3304eb8cff"
         - name: IMAGE_DIGEST
           value: "gitlab-registry.nrp-nautilus.io/jmduarte/hbb_interaction_network@sha256:d876f8329b3345f2086e6cb6f70a3811810acdc87b40b6f15ee90c73b281ad1d"
         volumeMounts:
