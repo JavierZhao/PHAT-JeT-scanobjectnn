@@ -9,7 +9,11 @@ metadata:
 spec:
   parallelism: 1
   completions: 1
-  backoffLimit: 1
+  # 4, not 1. The plan chose 1 to fail fast, but the observed failure mode is
+  # node taint eviction (cluster maintenance), not code error -- five jobs died
+  # that way in one batch. Retries are now safe because train_scanobjectnn.py
+  # archives a previous attempt's metrics.json instead of overwriting it.
+  backoffLimit: 4
   template:
     metadata:
       labels:
@@ -25,7 +29,7 @@ spec:
         - |
           git clone --no-checkout https://github.com/JavierZhao/PHAT-JeT-scanobjectnn.git /opt/repo/PHAT-JeT && \
           cd /opt/repo/PHAT-JeT && \
-          git checkout eb8ad65ba18387a2d0323d83bc3afb57091049c7 && \
+          git checkout ed7c289a46eee054df384e24b0ccc89e527a4961 && \
           chown -R 1000:1000 /opt/repo/PHAT-JeT
         volumeMounts:
         - name: git-repo
@@ -54,7 +58,7 @@ spec:
             --seed 0
         env:
         - name: GIT_SHA
-          value: "eb8ad65ba18387a2d0323d83bc3afb57091049c7"
+          value: "ed7c289a46eee054df384e24b0ccc89e527a4961"
         - name: IMAGE_DIGEST
           value: "gitlab-registry.nrp-nautilus.io/jmduarte/hbb_interaction_network@sha256:d876f8329b3345f2086e6cb6f70a3811810acdc87b40b6f15ee90c73b281ad1d"
         volumeMounts:
