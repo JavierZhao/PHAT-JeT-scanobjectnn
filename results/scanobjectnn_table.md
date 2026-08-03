@@ -331,6 +331,49 @@ attention that gives PHAT its name. That must be stated honestly in the paper.
 - `pn2` (PointNeXt's literal recipe): 77.8–79.1 — confirmed worse across all
   4 runs.
 
+## 3k. FINAL arm comparison — all complete 250-epoch runs, config S (0.612M)
+
+Two protocols shown: ours (test at best-validation epoch) and the baselines'
+(max over the test curve). See §5 for why both are reported.
+
+| arm | n | test@best-val | curve max | final epoch |
+|---|---|---|---|---|
+| height baseline | 3 | 80.55 ± 0.29 | 81.23 ± 0.48 | 80.73 ± 0.43 |
+| **xyz_shifted** | 4 | **81.45 ± 0.53** | **82.29 ± 0.41** | **81.70 ± 0.37** |
+| sparse_mean GMP | 4 | 80.93 ± 0.65 | 81.39 ± 0.34 | 80.93 ± 0.35 |
+| trilinear GMP | 4 | 80.99 ± 0.69 | 81.80 ± 0.31 | 81.22 ± 0.12 |
+| no attention at all | 4 | 79.08 ± 0.53 | 79.84 ± 0.34 | 79.40 ± 0.45 |
+
+**Corrections to earlier interim reporting in this file.** Two numbers quoted
+mid-campaign were single best runs, not means, and both come down with full
+seeds:
+
+- `xyz_shifted` was reported at 82.27; the 4-run mean is **81.45 ± 0.53** on
+  our protocol (82.29 ± 0.41 on the baselines'). The 82.27 was one run.
+- `sparse_mean` was reported at 81.68 from a partial run; complete, it is
+  **80.93 ± 0.65** — only +0.4 over baseline and **inside seed noise**. It is
+  not a confirmed gain, and neither is trilinear GMP (80.99 ± 0.69).
+
+So the only change beyond height that survives full seeds is **xyz_shifted**,
+at about **+0.9** (roughly 2σ on the pooled spread, consistent across 4 runs).
+
+## 3l. Training on 100% of the data buys nothing
+
+Both arms, 3 seeds, `--val_fraction 0` (no holdout, matching PointNeXt/PointMLP):
+
+| config | 90% train (curve max) | 100% train (curve max) | Δ |
+|---|---|---|---|
+| xyz_shifted | 82.29 ± 0.41 | 82.14 ± 0.13 | −0.15 |
+| height only | 81.23 ± 0.48 | 80.94 ± 0.37 | −0.29 |
+
+**The 10% holdout costs nothing measurable** — the estimate of +0.3 to +0.8 was
+wrong. So the protocol difference against published numbers is purely the
+*selection rule* (+0.65), not the training-set size, and our held-out
+validation split is free.
+
+Worth noting: the full-training-set runs have markedly tighter spread
+(±0.13 vs ±0.41), so the extra 10% buys stability rather than accuracy.
+
 ## 4. Sources for baseline numbers
 
 [1] Qian et al., *PointNeXt: Revisiting PointNet++ with Improved Training and
