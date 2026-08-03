@@ -40,6 +40,8 @@ class PHATBlock3D(layers.Layer):
         gmp_kernel=3,
         gmp_variant="dense",
         use_gmp=True,
+        use_local_attention=True,
+        use_patch_messages=True,
         dropout=0.0,
         ffn_activation="gelu",
         patch_tokenizer_mode="mean",
@@ -52,6 +54,8 @@ class PHATBlock3D(layers.Layer):
         assert ffn_activation in ("relu", "gelu")
 
         self.use_gmp = use_gmp
+        self.use_local_attention = use_local_attention
+        self.use_patch_messages = use_patch_messages
         self.patch_shift = int(patch_shift)
         if self.patch_shift < 0 or self.patch_shift >= patch_size:
             raise ValueError("patch_shift must be in [0, patch_size)")
@@ -64,12 +68,12 @@ class PHATBlock3D(layers.Layer):
             )
 
         self.norm1 = layers.LayerNormalization(epsilon=1e-6)
-        self.attn = PatchedAttention(
+        self.attn = None if not use_local_attention else PatchedAttention(
             d_model, num_heads, patch_size, dropout=dropout, coord_dim=3
         )
         self.drop1 = layers.Dropout(dropout)
 
-        self.patch_msg = PatchMessageBroadcast(
+        self.patch_msg = None if not use_patch_messages else PatchMessageBroadcast(
             d_model=d_model,
             num_heads=num_heads,
             patch_size=patch_size,
@@ -105,11 +109,13 @@ class PHATBlock3D(layers.Layer):
             x = tf.roll(x, shift=-self.patch_shift, axis=1)
             coords = tf.roll(coords, shift=-self.patch_shift, axis=1)
 
-        y = self.attn(self.norm1(x), coords, training=training)
-        x = x + self.drop1(y, training=training)
+        if self.attn is not None:
+            y = self.attn(self.norm1(x), coords, training=training)
+            x = x + self.drop1(y, training=training)
 
-        m = self.patch_msg(self.norm1(x), coords, training=training)
-        x = x + self.drop_msg(m, training=training)
+        if self.patch_msg is not None:
+            m = self.patch_msg(self.norm1(x), coords, training=training)
+            x = x + self.drop_msg(m, training=training)
 
         y = self.ffn(self.norm2(x), training=training)
         x = x + self.drop2(y, training=training)
@@ -179,6 +185,8 @@ def build_phat_sonn_classifier(
     delta_growth="density",
     gmp_kernel=3,
     pool="mean",
+    use_local_attention=True,
+    use_patch_messages=True,
     head_dropout=0.0,
     head_width=None,
     final_norm=False,
@@ -249,6 +257,8 @@ def build_phat_sonn_classifier(
             grid_size=stage_delta,
             gmp_kernel=gmp_kernel,
             use_gmp=use_gmp,
+            use_local_attention=use_local_attention,
+            use_patch_messages=use_patch_messages,
             gmp_variant=gmp_variant,
             dropout=dropout,
             ffn_activation=ffn_activation,

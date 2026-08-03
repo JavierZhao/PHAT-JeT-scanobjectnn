@@ -129,6 +129,11 @@ def parse_args(argv=None):
         "--height_append", action=argparse.BooleanOptionalAction, default=None,
         help="append raw y height as a fourth per-point input feature",
     )
+    p.add_argument("--local_attention", choices=["on", "off"], default="on",
+                   help="ablate the within-patch attention. There has never "
+                        "been an attention ablation -- only a GMP one.")
+    p.add_argument("--patch_messages", choices=["on", "off"], default="on",
+                   help="ablate the patch-token global path.")
     p.add_argument("--dropout", type=float, default=0.0,
                    help="dropout inside PHAT blocks. Never exposed before, so "
                         "every run to date used 0.0 -- the model has had no "
@@ -297,6 +302,8 @@ def build_classifier(args):
         gmp_kernel=args.gmp_kernel,
         dropout=args.dropout,
         pool=args.pool,
+        use_local_attention=(args.local_attention == "on"),
+        use_patch_messages=(args.patch_messages == "on"),
         head_dropout=args.head_dropout,
         head_width=args.head_width,
         final_norm=args.final_norm,
