@@ -5,6 +5,7 @@ val/test evaluation path and the metrics.json contract, without the
 license-gated dataset.
 """
 
+import argparse
 import importlib.util
 import json
 import os
@@ -206,3 +207,25 @@ def test_previous_metrics_are_preserved_with_incrementing_attempt_number(tmp_pat
         "epochs_completed"
     ] == 193
     assert not metrics.exists()
+
+
+def test_height_wrapper_works_with_every_pooling_mode():
+    """Regression: the wrapper looked up the pooling layer by a name that
+    changed with the pooling mode, so height + max pooling died at build time
+    on the cluster. Combinations must be tested, not just each axis alone.
+    """
+    import tensorflow as tf
+    train_mod = _load_train_module()
+    for pool in ("mean", "max", "maxmean"):
+        for mode, width in (("shifted", 4), ("xyz_shifted", 6)):
+            args = argparse.Namespace(
+                config="XS", delta=0.09375, gmp="on", gmp_variant="dense",
+                patch_size=None, height_append=True, height_mode=mode,
+                downsample_stride=None, delta_growth="density", gmp_kernel=3,
+                dropout=0.0, pool=pool, head_dropout=0.0, head_width=None,
+                final_norm=False, hierarchy_pool_size=None,
+                hierarchy_after_block=None, shifted_patches=False,
+            )
+            model = train_mod.build_classifier(args)
+            out = model(tf.zeros([2, 1024, width]), training=False)
+            assert out.shape == (2, 15), f"{pool}/{mode} produced {out.shape}"

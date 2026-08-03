@@ -304,7 +304,7 @@ def build_phat_sonn_classifier(
             [layers.GlobalMaxPooling1D()(x), layers.GlobalAveragePooling1D()(x)]
         )
     elif pool == "mean":
-        x = layers.GlobalAveragePooling1D(name="global_mean_pool")(x)
+        x = layers.GlobalAveragePooling1D(name="global_pool")(x)
     else:
         raise ValueError(f"unknown pool {pool!r}; expected mean, max or maxmean")
 

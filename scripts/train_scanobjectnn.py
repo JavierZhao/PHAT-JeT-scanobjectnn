@@ -318,10 +318,25 @@ def build_classifier(args):
             x, coords = layer([x, coords])
         elif layer.name == "coarse_phat_path":
             x, coords = layer([x, coords])
-    x = base.get_layer("global_mean_pool")(x)
+    # Rebuild pooling rather than reusing it by name. It carries no weights,
+    # and for pool="maxmean" it is two layers feeding a Concatenate, so it is
+    # not reusable as a single callable -- that combination crashed on the
+    # cluster.
+    if any(layer.name == "final_norm" for layer in base.layers):
+        x = base.get_layer("final_norm")(x)
+    if args.pool == "max":
+        x = tf.keras.layers.GlobalMaxPooling1D(name="global_pool")(x)
+    elif args.pool == "maxmean":
+        x = tf.keras.layers.Concatenate(name="global_pool")(
+            [tf.keras.layers.GlobalMaxPooling1D()(x),
+             tf.keras.layers.GlobalAveragePooling1D()(x)]
+        )
+    else:
+        x = tf.keras.layers.GlobalAveragePooling1D(name="global_pool")(x)
     x = base.get_layer("head_hidden")(x)
-    if any(layer.name == "dropout" for layer in base.layers):
-        x = base.get_layer("dropout")(x)
+    for name in ("head_dropout", "dropout"):
+        if any(layer.name == name for layer in base.layers):
+            x = base.get_layer(name)(x)
     logits = base.get_layer("logits")(x)
     return tf.keras.Model(features, logits, name=base.name)
 
