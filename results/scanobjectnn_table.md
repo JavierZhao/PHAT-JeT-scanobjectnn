@@ -298,6 +298,39 @@ gap.
 two arms motivated by the overfitting diagnostic (`poolmax`, `reg`) are only
 5–8 epochs in.*
 
+## 3i. Attention ablation — the attention machinery contributes ~1 point
+
+Config S, δ\*, height on, vs the 80.55 ± 0.29 baseline. 2 seeds × 2 GPU pools.
+
+| arm | params | test OA (range) |
+|---|---|---|
+| full model | 612K | 80.55 ± 0.29 |
+| no local attention | 480K | 79.0 – 80.2 |
+| no patch messages | 447K | 79.6 – 80.5 |
+| **neither (GMP → FFN only)** | **314K** | **79.1 – 79.6** |
+
+Removing the *entire* attention machinery — both the within-patch attention and
+the patch-token global path — costs about **1–1.5 points**, while removing GMP
+costs 8.4. The model is essentially an information engine (GMP + input
+features) with attention as a small refinement. A 314K-parameter GMP→FFN stack
+reaches ~79.3.
+
+This reframes the transfer claim: what transfers *usefully* from the jet
+architecture is chiefly the GMP positional prior, not the hierarchical
+attention that gives PHAT its name. That must be stated honestly in the paper.
+
+## 3j. Further nulls: max pooling and regularization
+
+- `poolmax` (max readout, the jet model's own choice): 79.4–80.1 — **no gain**,
+  contradicting the PointNet max-pooling expectation for this architecture.
+- `reg` (dropout 0.3/0.1 + 256-wide head): 77.6–78.6 — **hurt**, despite the
+  falling-train-loss diagnostic suggesting overfitting. The 8–11 point
+  val–test gap is therefore likely a train/test distribution shift in
+  PB_T50_RS itself (val is drawn from the training distribution; test objects
+  differ), not classical overfitting. Regularizing cannot close a shift.
+- `pn2` (PointNeXt's literal recipe): 77.8–79.1 — confirmed worse across all
+  4 runs.
+
 ## 4. Sources for baseline numbers
 
 [1] Qian et al., *PointNeXt: Revisiting PointNet++ with Improved Training and
