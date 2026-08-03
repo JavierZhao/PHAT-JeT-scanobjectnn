@@ -10,28 +10,36 @@ seeds. Status as of the latest cluster sync — see `notes.md` for caveats.
 All baseline numbers **verified against the original papers** (see §4). Every
 row is PB_T50_RS, the hardest variant.
 
-| Method | #Params | OA (%) | mAcc (%) |
-|---|---|---|---|
-| PointNet [1,2] | 3.5M | 68.2 | 63.4 |
-| **PHAT-JeT-XS** (δ*, no height) | **0.157M** | **74.96 ± 0.82** | **70.74 ± 0.85** |
-| **PHAT-JeT-S** (δ*, no height) | **0.612M** | **75.78 ± 0.55** | **71.45 ± 0.53** |
-| **PHAT-JeT-M** (δ*, no height) | **1.214M** | **77.02 ± 0.80** | **73.01 ± 1.02** |
-| **PHAT-JeT-L** (δ*, no height) | **2.713M** | **77.15 ± 0.25** | **73.24 ± 0.27** |
-| PointNet++ [1,2] | 1.5M | 77.9 | 75.4 |
-| DGCNN [1,2] | 1.8M | 78.1 | 73.6 |
-| PointCNN [1] | 0.6M | 78.5 | 75.1 |
-| BGA-DGCNN [2] | — | 79.7 | 75.7 |
-| **PHAT-JeT-L + height** | **2.713M** | **79.69 ± 1.21** | **76.58** |
-| **PHAT-JeT-XS + height** | **0.157M** | **80.00 ± 0.25** | **77.08** |
-| **PHAT-JeT-M + height** | **1.214M** | **80.46 ± 0.71** | **77.15** |
-| SimpleView [1,2] | 0.8M | 80.5 ± 0.3 | — |
-| **PHAT-JeT-S + height** | **0.612M** | **80.55 ± 0.29** | **77.23** |
-| **PHAT-JeT-S + xyz offsets** ★ | **0.612M** | **81.45 ± 0.53** | **78.12** |
-| MVTN [1] | 3.5M | 82.8 | — |
-| PointMLP-elite [2] | 0.68M | 83.8 ± 0.6 | 81.8 ± 0.8 |
-| PointMLP [1] | 13.2M | 85.4 ± 1.3 | 83.9 ± 1.5 |
-| PointNet++ *w/ PointNeXt training* [1] | 1.5M | 86.1 ± 0.7 | 84.2 ± 0.9 |
-| PointNeXt-S [1] | 1.4M | 87.7 ± 0.4 | 85.8 ± 0.6 |
+**Protocol note — read before comparing.** Published baselines report
+max-over-test-curve: PointNeXt's "validation set" *is* the test set and it
+reports the best-epoch test score, and PointMLP has no validation set at all
+and reports a running max. Our default protocol (test at best *held-out*
+validation epoch) is strictly stricter. The **comparable** column is therefore
+"OA (matched)"; "OA (strict)" is our own rule and is reported alongside for
+honesty. Measured difference between the two: +0.65 (§5).
+
+| Method | #Params | GFLOPs | OA (matched) | OA (strict) | mAcc |
+|---|---|---|---|---|---|
+| PointNet [1,2] | 3.5M | 0.9 | 68.2 | — | 63.4 |
+| **PHAT-JeT-XS** (δ*, no height) | **0.157M** | 0.23 | 75.6 | 74.96 ± 0.82 | 70.74 |
+| **PHAT-JeT-S** (δ*, no height) | **0.612M** | 0.90 | 76.5 | 75.78 ± 0.55 | 71.45 |
+| **PHAT-JeT-M** (δ*, no height) | **1.214M** | 1.81 | 77.8 | 77.02 ± 0.80 | 73.01 |
+| **PHAT-JeT-L** (δ*, no height) | **2.713M** | 4.02 | 77.9 | 77.15 ± 0.25 | 73.24 |
+| PointNet++ [1,2] | 1.5M | 1.7 | 77.9 | — | 75.4 |
+| DGCNN [1,2] | 1.8M | 4.8 | 78.1 | — | 73.6 |
+| PointCNN [1] | 0.6M | — | 78.5 | — | 75.1 |
+| BGA-DGCNN [2] | — | — | 79.7 | — | 75.7 |
+| **PHAT-JeT-L + height** | **2.713M** | 4.02 | 80.09 ± 1.31 | 79.69 ± 1.21 | 76.58 |
+| **PHAT-JeT-XS + height** | **0.157M** | 0.23 | 80.66 ± 0.16 | 80.00 ± 0.25 | 77.08 |
+| **PHAT-JeT-M + height** | **1.214M** | 1.81 | 81.11 ± 0.59 | 80.46 ± 0.71 | 77.15 |
+| SimpleView [1,2] | 0.8M | — | 80.5 ± 0.3 | — | — |
+| **PHAT-JeT-S + height** | **0.612M** | 0.90 | 81.23 ± 0.48 | 80.55 ± 0.29 | 77.23 |
+| **PHAT-JeT-S + xyz offsets** ★ | **0.612M** | **0.90** | **82.29 ± 0.41** | 81.45 ± 0.53 | **78.12** |
+| MVTN [1] | 3.5M | 1.8 | 82.8 | — | — |
+| PointMLP-elite [2] | 0.68M | — | 83.8 ± 0.6 | — | 81.8 |
+| PointMLP [1] | 13.2M | 31.3 | 85.4 ± 1.3 | — | 83.9 |
+| PointNet++ *w/ PointNeXt training* [1] | 1.5M | 1.7 | 86.1 ± 0.7 | — | 84.2 |
+| PointNeXt-S [1] | 1.4M | 1.6 | 87.7 ± 0.4 | — | 85.8 |
 
 All PHAT-JeT rows are 3 seeds at 250 epochs. "+ height" appends the object's
 height above its own base as a 4th input feature (§3d); everything else is
