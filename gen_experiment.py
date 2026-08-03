@@ -49,7 +49,11 @@ metadata:
 spec:
   parallelism: 1
   completions: 1
-  backoffLimit: 1
+  # 4, not 1. The plan chose 1 to fail fast, but the observed failure mode is
+  # node taint eviction (cluster maintenance), not code error -- five jobs died
+  # that way in one batch. Retries are now safe because train_scanobjectnn.py
+  # archives a previous attempt's metrics.json instead of overwriting it.
+  backoffLimit: 4
   template:
     metadata:
       labels:
