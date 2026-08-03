@@ -415,6 +415,46 @@ Three hypotheses died here, and all three were mine:
 75.78 → 80.55 (height) → 81.45 (three-axis offsets); nothing since has moved it
 outside noise.
 
+## 3n. Research-derived arms — FPS is the one that worked
+
+Config S, δ\*, xyz_shifted input, against that arm's 82.29 ± 0.41 (matched).
+
+| arm | n | matched OA | strict OA | verdict |
+|---|---|---|---|---|
+| xyz_shifted (reference) | 4 | 82.29 ± 0.41 | 81.45 ± 0.53 | — |
+| **FPS point sampling** | 3 | **82.27 ± 0.64** | **81.62 ± 0.51** | ties on matched, **best on strict** |
+| concat(max, mean) readout | 3 | 81.23 ± 0.19 | 81.04 ± 0.20 | null |
+| sub-voxel position | 2 | 81.26 ± 0.10 | 80.86 ± 0.19 | null (2 seeds) |
+
+**FPS has the highest strict score of any configuration (81.62 ± 0.51)** and
+ties the reference on the matched protocol. Its final-epoch score is also the
+highest recorded (82.12 ± 0.60 vs 81.70), i.e. it is the most stable at
+convergence rather than peaking early — consistent with better surface coverage
+producing a better-conditioned problem rather than a luckier maximum.
+
+The other two research leads are null. Notably, **radius-normalized sub-voxel
+position did not help** despite a well-argued mechanism (PointNeXt reports +0.3
+for the analogous change, and our GMP discards in-voxel position entirely). At
+2 seeds this is provisional, but it is not trending positive.
+
+## 3o. FLOP-matched scaling confirms we are not compute-limited
+
+| config | params | GFLOPs | matched OA |
+|---|---|---|---|
+| **S + xyz** | 0.612M | **0.90** | **82.29 ± 0.41** |
+| M + xyz (FLOP-matched to PointNeXt-S) | 1.215M | 1.81 | 81.24 ± 0.22 |
+| XS + xyz | 0.157M | 0.23 | 81.22 ± 0.16 |
+| PointNeXt-S | 1.4M | 1.6 | 87.7 |
+
+Config M **exceeds** PointNeXt-S's compute (1.81 vs 1.6 GFLOPs) at 13% fewer
+parameters and scores **1.05 points below our own S**. Spending PointNeXt's FLOP
+budget buys nothing.
+
+Equally striking at the other end: **XS matches M within noise** (81.22 vs
+81.24) at **8× fewer parameters and 8× fewer FLOPs**. Accuracy here is
+essentially independent of capacity across a 17× range, so the efficient
+configuration is the one to report.
+
 ## 4. Sources for baseline numbers
 
 [1] Qian et al., *PointNeXt: Revisiting PointNet++ with Improved Training and
