@@ -183,3 +183,62 @@ def test_sparse_is_numerically_equivalent_to_dense_with_shared_weights():
     np.testing.assert_allclose(
         sparse_out.numpy(), dense_out.numpy(), rtol=2e-5, atol=2e-6
     )
+
+
+def test_single_scale_bank_is_identical_to_no_bank():
+    """A one-element gmp_scales must reproduce the original model exactly.
+
+    This is what makes the option safe to add: ~90 completed runs depend on
+    the single-scale path being untouched.
+    """
+    import numpy as np
+    from models.phat_sonn import build_phat_sonn_classifier as build
+
+    plain = build(config="XS", num_points=64, grid_size=0.09375)
+    banked = build(config="XS", num_points=64, grid_size=0.09375,
+                   gmp_scales=[0.09375])
+    assert plain.count_params() == banked.count_params()
+
+    points = tf.constant(
+        np.random.default_rng(0).uniform(-1, 1, size=(2, 64, 3)).astype(np.float32)
+    )
+    banked.set_weights(plain.get_weights())
+    np.testing.assert_allclose(
+        banked(points, training=False).numpy(),
+        plain(points, training=False).numpy(), rtol=1e-5, atol=1e-6,
+    )
+
+
+def test_multi_scale_bank_builds_every_requested_resolution():
+    from models.phat_sonn import build_phat_sonn_classifier as build
+
+    scales = [0.0625, 0.09375, 0.125]
+    model = build(config="XS", num_points=64, gmp_scales=scales)
+    model(tf.zeros([2, 64, 3]), training=False)
+    block = [l for l in model.layers if "phat_block3d" in l.name][0]
+    assert [g.grid_size for g in block.gmp] == scales
+    assert model.count_params() > build(config="XS", num_points=64).count_params()
+
+
+def test_multi_scale_gradients_reach_every_scale():
+    """Each scale must train, or the bank is decoration."""
+    import numpy as np
+    from models.phat_sonn import build_phat_sonn_classifier as build
+
+    model = build(config="XS", num_points=64, gmp_scales=[0.0625, 0.125])
+    points = tf.constant(
+        np.random.default_rng(1).uniform(-1, 1, size=(2, 64, 3)).astype(np.float32)
+    )
+    with tf.GradientTape() as tape:
+        loss = tf.reduce_mean(tf.square(model(points, training=True)))
+    grads = tape.gradient(loss, model.trainable_variables)
+
+    def var_id(v):
+        return (getattr(v, "path", None) or v.name).lower()
+
+    for scale in ("gmp_scale_0", "gmp_scale_1"):
+        touched = [
+            g for g, v in zip(grads, model.trainable_variables)
+            if scale in var_id(v) and g is not None and np.abs(g.numpy()).sum() > 0
+        ]
+        assert touched, f"no gradient reached {scale}"

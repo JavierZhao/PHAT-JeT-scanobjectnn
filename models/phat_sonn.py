@@ -39,6 +39,7 @@ class PHATBlock3D(layers.Layer):
         grid_size=0.25,
         gmp_kernel=3,
         gmp_variant="dense",
+        gmp_scales=None,
         use_gmp=True,
         use_local_attention=True,
         use_patch_messages=True,
@@ -59,13 +60,25 @@ class PHATBlock3D(layers.Layer):
         self.patch_shift = int(patch_shift)
         if self.patch_shift < 0 or self.patch_shift >= patch_size:
             raise ValueError("patch_shift must be in [0, patch_size)")
+        # Multi-scale GMP: a bank of voxel resolutions in parallel rather than
+        # one. Motivated directly by the ablations -- GMP is worth 8.4 points
+        # while the whole attention machinery is worth ~1, so capacity is
+        # better spent widening the positional prior than the mixer. Each
+        # scale contributes its own residual delta and the deltas are averaged,
+        # so a single-element bank is exactly the previous behaviour.
+        self.gmp_scales = ([grid_size] if gmp_scales is None
+                           else [float(s) for s in gmp_scales])
         if use_gmp:
-            self.gmp = GeometricMessagePassing3D(
-                d_model,
-                kernel_size=gmp_kernel,
-                grid_size=grid_size,
-                variant=gmp_variant,
-            )
+            self.gmp = [
+                GeometricMessagePassing3D(
+                    d_model,
+                    kernel_size=gmp_kernel,
+                    grid_size=scale,
+                    variant=gmp_variant,
+                    name=f"gmp_scale_{i}",
+                )
+                for i, scale in enumerate(self.gmp_scales)
+            ]
 
         self.norm1 = layers.LayerNormalization(epsilon=1e-6)
         self.attn = None if not use_local_attention else PatchedAttention(
@@ -100,7 +113,10 @@ class PHATBlock3D(layers.Layer):
         x, coords = inputs
 
         if self.use_gmp:
-            x = self.gmp(x, coords)
+            # Average the per-scale residual deltas, then add once. With one
+            # scale this reduces exactly to the original residual add.
+            deltas = [gmp(x, coords) - x for gmp in self.gmp]
+            x = x + tf.add_n(deltas) / float(len(deltas))
 
         # Swin-style cyclic shifts make adjacent blocks use overlapping point
         # neighbourhoods.  Undo the shift before returning so the public point
@@ -184,6 +200,7 @@ def build_phat_sonn_classifier(
     downsample_stride=None,
     delta_growth="density",
     gmp_kernel=3,
+    gmp_scales=None,
     pool="mean",
     use_local_attention=True,
     use_patch_messages=True,
@@ -260,6 +277,7 @@ def build_phat_sonn_classifier(
             use_local_attention=use_local_attention,
             use_patch_messages=use_patch_messages,
             gmp_variant=gmp_variant,
+            gmp_scales=gmp_scales,
             dropout=dropout,
             ffn_activation=ffn_activation,
             patch_shift=(patch // 2 if shifted_patches and i % 2 else 0),

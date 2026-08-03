@@ -129,6 +129,11 @@ def parse_args(argv=None):
         "--height_append", action=argparse.BooleanOptionalAction, default=None,
         help="append raw y height as a fourth per-point input feature",
     )
+    p.add_argument("--gmp_scales", type=str, default=None,
+                   help="comma-separated GMP voxel sizes run in parallel, "
+                        "e.g. 0.0625,0.09375,0.125. Attention is worth ~1 OA "
+                        "and GMP 8.4, so widening the prior beats widening "
+                        "the mixer. Omit for the single-scale default.")
     p.add_argument("--local_attention", choices=["on", "off"], default="on",
                    help="ablate the within-patch attention. There has never "
                         "been an attention ablation -- only a GMP one.")
@@ -305,6 +310,8 @@ def build_classifier(args):
         downsample_stride=args.downsample_stride,
         delta_growth=args.delta_growth,
         gmp_kernel=args.gmp_kernel,
+        gmp_scales=([float(s) for s in args.gmp_scales.split(",")]
+                    if args.gmp_scales else None),
         dropout=args.dropout,
         pool=args.pool,
         use_local_attention=(args.local_attention == "on"),
