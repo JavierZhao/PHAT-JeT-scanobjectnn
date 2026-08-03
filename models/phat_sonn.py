@@ -40,6 +40,7 @@ class PHATBlock3D(layers.Layer):
         gmp_kernel=3,
         gmp_variant="dense",
         gmp_scales=None,
+        subvoxel_position=False,
         use_gmp=True,
         use_local_attention=True,
         use_patch_messages=True,
@@ -75,6 +76,7 @@ class PHATBlock3D(layers.Layer):
                     kernel_size=gmp_kernel,
                     grid_size=scale,
                     variant=gmp_variant,
+                    subvoxel_position=subvoxel_position,
                     name=f"gmp_scale_{i}",
                 )
                 for i, scale in enumerate(self.gmp_scales)
@@ -201,6 +203,7 @@ def build_phat_sonn_classifier(
     delta_growth="density",
     gmp_kernel=3,
     gmp_scales=None,
+    subvoxel_position=False,
     pool="mean",
     use_local_attention=True,
     use_patch_messages=True,
@@ -278,6 +281,7 @@ def build_phat_sonn_classifier(
             use_patch_messages=use_patch_messages,
             gmp_variant=gmp_variant,
             gmp_scales=gmp_scales,
+            subvoxel_position=subvoxel_position,
             dropout=dropout,
             ffn_activation=ffn_activation,
             patch_shift=(patch // 2 if shifted_patches and i % 2 else 0),

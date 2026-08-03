@@ -130,6 +130,10 @@ def parse_args(argv=None):
         "--height_append", action=argparse.BooleanOptionalAction, default=None,
         help="append raw y height as a fourth per-point input feature",
     )
+    p.add_argument("--subvoxel_position", action="store_true",
+                   help="feed the in-voxel offset, normalized by delta, into "
+                        "GMP. PointNeXt's relative-position normalization "
+                        "adapted to a voxel prior.")
     p.add_argument("--sampling", choices=["random", "fps"], default="random",
                    help="point subsampling. fps matches PointNeXt: an FPS pool "
                         "per training object with a random draw from it each "
@@ -342,6 +346,7 @@ def build_classifier(args):
         gmp_kernel=args.gmp_kernel,
         gmp_scales=([float(s) for s in args.gmp_scales.split(",")]
                     if args.gmp_scales else None),
+        subvoxel_position=args.subvoxel_position,
         dropout=args.dropout,
         pool=args.pool,
         use_local_attention=(args.local_attention == "on"),

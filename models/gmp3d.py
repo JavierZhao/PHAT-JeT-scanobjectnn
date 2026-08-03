@@ -13,6 +13,29 @@ from tensorflow.keras import layers
 _SPARSE_VARIANTS = ("sparse", "sparse_mean", "sparse_trilinear")
 
 
+def subvoxel_offset(coords, grid_size):
+    """Position within the voxel, normalized to [0, 1) by the voxel size.
+
+    `quantize` takes floor() and throws this away, so GMP sees only which cell
+    a point is in, never where in the cell. PointNeXt hit the same problem with
+    relative neighbour offsets and fixed it by dividing by the query radius:
+
+      "Without normalization, values of relative positions are considerably
+       small (less than the radius), requiring the network to learn a larger
+       weight to apply on dp. This makes the optimization non-trivial,
+       especially since weight decay is used to reduce the weights of the
+       network and thus tends to ignore the effects of relative position."
+
+    Dividing the offset by delta is the direct voxel analogue: it turns values
+    of order delta (0.09) into order 1, which weight decay cannot suppress.
+    Worth +0.3 OA on ScanObjectNN for PointNeXt and +2.3 mIoU on their largest
+    model, with the effect growing with model size.
+    """
+    mins = tf.reduce_min(coords, axis=1, keepdims=True)
+    scaled = (coords - mins) / grid_size
+    return scaled - tf.floor(scaled)
+
+
 def quantize(coords, grid_size):
     """Per-cloud min-shifted voxel indices.
 
@@ -133,7 +156,8 @@ class GeometricMessagePassing3D(layers.Layer):
     """Voxel-grid positional prior. Preserves the point count N."""
 
     def __init__(
-        self, channels, kernel_size=3, grid_size=0.25, variant="dense", **kwargs
+        self, channels, kernel_size=3, grid_size=0.25, variant="dense",
+        subvoxel_position=False, **kwargs
     ):
         super().__init__(**kwargs)
         if variant not in ("dense",) + _SPARSE_VARIANTS:
@@ -146,6 +170,12 @@ class GeometricMessagePassing3D(layers.Layer):
         self.kernel_size = kernel_size
         self.grid_size = grid_size
         self.variant = variant
+        self.subvoxel_position = subvoxel_position
+        # Projects the radius-normalized in-voxel offset into feature space.
+        self.subvoxel_proj = (
+            layers.Dense(channels, name="subvoxel_proj")
+            if subvoxel_position else None
+        )
 
         self.conv3d = layers.Conv3D(
             channels,
@@ -246,6 +276,13 @@ class GeometricMessagePassing3D(layers.Layer):
             [B, N, C] -- same shape as x.
         """
         residual = x
+
+        if self.subvoxel_proj is not None:
+            # Inject where-in-the-cell before aggregation, so the scatter sees
+            # position-aware features rather than cell-identity alone. This
+            # must precede the sparse dispatch, or sparse variants would
+            # silently skip it.
+            x = x + self.subvoxel_proj(subvoxel_offset(coords, self.grid_size))
 
         if self.variant != "dense":
             return self._call_sparse(x, coords)

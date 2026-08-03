@@ -242,3 +242,43 @@ def test_multi_scale_gradients_reach_every_scale():
             if scale in var_id(v) and g is not None and np.abs(g.numpy()).sum() > 0
         ]
         assert touched, f"no gradient reached {scale}"
+
+
+def test_subvoxel_offset_is_radius_normalized():
+    """The offset must be in [0,1): that is the whole point of dividing by delta.
+
+    PointNeXt's finding is that unnormalized relative positions are small
+    enough that weight decay suppresses the weights acting on them. Dividing
+    by the voxel size puts them at order 1.
+    """
+    import numpy as np
+    from models.gmp3d import subvoxel_offset
+
+    coords = tf.constant(
+        np.random.default_rng(0).uniform(-1.1, 1.1, size=(4, 512, 3)).astype(np.float32)
+    )
+    for delta in (0.5, 0.125, 0.09375):
+        off = subvoxel_offset(coords, delta).numpy()
+        assert off.min() >= 0.0
+        assert off.max() <= 1.0 + 1e-6
+        # roughly uniform inside the cell, so mean near 0.5 regardless of delta
+        assert 0.4 < off.mean() < 0.6, f"delta={delta} mean={off.mean()}"
+
+
+def test_subvoxel_position_reaches_every_gmp_variant():
+    """Regression: the injection originally sat after the sparse dispatch, so
+    sparse variants silently skipped it."""
+    import numpy as np
+    from models.gmp3d import GeometricMessagePassing3D
+
+    coords, feats = _cloud(num_points=32, channels=4, seed=9)
+    for variant in ("dense",) + SPARSE_VARIANTS:
+        layer = GeometricMessagePassing3D(
+            channels=4, grid_size=0.2, variant=variant, subvoxel_position=True
+        )
+        with tf.GradientTape() as tape:
+            loss = tf.reduce_sum(tf.square(layer(feats, coords)))
+        grad = tape.gradient(loss, layer.subvoxel_proj.kernel)
+        assert grad is not None and np.abs(grad.numpy()).sum() > 0, (
+            f"subvoxel projection unused by variant {variant}"
+        )
