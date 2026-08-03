@@ -1,0 +1,84 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: abl-neither-s1
+  namespace: cms-ml
+  labels:
+    jobgroup: phatjet-sonn
+    phase: "abl"
+spec:
+  parallelism: 1
+  completions: 1
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        jobgroup: phatjet-sonn
+        phase: "abl"
+    spec:
+      restartPolicy: Never
+      initContainers:
+      - name: init-clone-repo
+        image: alpine/git
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          git clone --no-checkout https://github.com/JavierZhao/PHAT-JeT-scanobjectnn.git /opt/repo/PHAT-JeT && \
+          cd /opt/repo/PHAT-JeT && \
+          git checkout eb8ad65ba18387a2d0323d83bc3afb57091049c7 && \
+          chown -R 1000:1000 /opt/repo/PHAT-JeT
+        volumeMounts:
+        - name: git-repo
+          mountPath: /opt/repo
+        resources:
+          requests: {cpu: '1', memory: 1Gi}
+          limits: {cpu: '1', memory: 1Gi}
+      containers:
+      - name: train
+        image: gitlab-registry.nrp-nautilus.io/jmduarte/hbb_interaction_network@sha256:d876f8329b3345f2086e6cb6f70a3811810acdc87b40b6f15ee90c73b281ad1d
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          cd /opt/repo/PHAT-JeT && \
+          python scripts/train_scanobjectnn.py \
+            --data_dir /j-jepa-vol/scanobjectnn/main_split \
+            --out /j-jepa-vol/phatjet-sonn/runs/abl-neither-s1 \
+            --config S \
+            --delta 0.09375 \
+            --gmp on \
+            --ordering morton \
+            --patch_size 32 \
+            --recipe pointnext \
+            --height_mode shifted \
+            --local_attention off \
+            --patch_messages off \
+            --seed 1
+        env:
+        - name: GIT_SHA
+          value: "eb8ad65ba18387a2d0323d83bc3afb57091049c7"
+        - name: IMAGE_DIGEST
+          value: "gitlab-registry.nrp-nautilus.io/jmduarte/hbb_interaction_network@sha256:d876f8329b3345f2086e6cb6f70a3811810acdc87b40b6f15ee90c73b281ad1d"
+        volumeMounts:
+        - name: git-repo
+          mountPath: /opt/repo
+        - name: j-jepa-vol
+          mountPath: /j-jepa-vol
+        resources:
+          requests: {cpu: '4', memory: 32Gi, nvidia.com/gpu: 1}
+          limits: {cpu: '4', memory: 32Gi, nvidia.com/gpu: 1}
+      volumes:
+      - name: git-repo
+        emptyDir: {}
+      - name: j-jepa-vol
+        persistentVolumeClaim:
+          claimName: j-jepa-vol
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: nvidia.com/gpu.product
+                operator: In
+                values:
+                - NVIDIA-GeForce-RTX-3090
+                - NVIDIA-GeForce-RTX-4090

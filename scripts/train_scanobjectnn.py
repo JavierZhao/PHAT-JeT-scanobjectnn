@@ -201,6 +201,11 @@ def make_train_epoch(points, labels, args, fixed_perm, epoch):
 
 def make_eval_arrays(points, labels, args, fixed_perm):
     """Deterministic: fixed subsample indices, no augmentation, no voting."""
+    if points.shape[0] == 0:
+        # --val_fraction 0 leaves no validation set at all.
+        width = 6 if args.height_mode == "xyz_shifted" else (
+            4 if args.height_append else 3)
+        return np.empty((0, NUM_POINTS, width), np.float32), labels
     subsample = eval_subsample_indices(points.shape[0], points.shape[1])
     prepared = np.stack(
         [
@@ -373,16 +378,20 @@ class MetricsLog:
         self.started = time.time()
 
     def record_epoch(self, epoch, train_loss):
-        val_oa, val_macc = evaluate(
-            self.model, self.val_points, self.val_labels, self.batch_size
-        )
+        if len(self.val_labels):
+            val_oa, val_macc = evaluate(
+                self.model, self.val_points, self.val_labels, self.batch_size
+            )
+        else:
+            val_oa, val_macc = float("nan"), float("nan")
         test_oa, test_macc = evaluate(
             self.model, self.test_points, self.test_labels, self.batch_size
         )
 
         # Checkpoint selection is on validation only; the test curve is
-        # recorded but never drives a decision.
-        if val_oa > self.best_val_oa:
+        # recorded but never drives a decision. With no val split there is no
+        # selection at all -- the final epoch is the result.
+        if len(self.val_labels) and val_oa > self.best_val_oa:
             self.best_val_oa = val_oa
             self.model.save_weights(os.path.join(self.out_dir, "best_val.weights.h5"))
 
@@ -438,9 +447,17 @@ def main():
 
     train_points, train_labels = load_split(args.data_dir, "train")
     test_points, test_labels = load_split(args.data_dir, "test")
-    train_idx, val_idx = stratified_train_val_split(
-        train_labels, val_fraction=args.val_fraction
-    )
+    if args.val_fraction > 0:
+        train_idx, val_idx = stratified_train_val_split(
+            train_labels, val_fraction=args.val_fraction
+        )
+    else:
+        # Train on all 11,416 objects, as PointNeXt and PointMLP do. With no
+        # held-out split there is nothing to select a checkpoint on, so the
+        # honest report is the FINAL epoch; test_curve_max is also recorded
+        # because that is what the published baselines effectively report.
+        train_idx = np.arange(len(train_labels))
+        val_idx = np.empty(0, dtype=int)
     logging.info("train=%d val=%d test=%d", len(train_idx), len(val_idx),
                  len(test_labels))
 
@@ -505,9 +522,15 @@ def main():
     model.save_weights(os.path.join(args.out, "final.weights.h5"))
     final_test_oa, final_test_macc = evaluate(model, test[0], test[1], args.batch_size)
 
-    # Test numbers at the best-validation epoch: the headline result.
-    model.load_weights(os.path.join(args.out, "best_val.weights.h5"))
-    best_test_oa, best_test_macc = evaluate(model, test[0], test[1], args.batch_size)
+    # Test numbers at the best-validation epoch: the headline result when a
+    # val split exists. With --val_fraction 0 there is no such epoch, and the
+    # final-epoch number above is the honest one.
+    best_ckpt = os.path.join(args.out, "best_val.weights.h5")
+    if len(val[1]) and os.path.exists(best_ckpt):
+        model.load_weights(best_ckpt)
+        best_test_oa, best_test_macc = evaluate(model, test[0], test[1], args.batch_size)
+    else:
+        best_test_oa = best_test_macc = None
 
     # Profiled last: it builds a separate graph and is version-sensitive, so a
     # failure here must not cost a completed training run.

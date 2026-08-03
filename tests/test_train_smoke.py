@@ -229,3 +229,33 @@ def test_height_wrapper_works_with_every_pooling_mode():
             model = train_mod.build_classifier(args)
             out = model(tf.zeros([2, 1024, width]), training=False)
             assert out.shape == (2, 15), f"{pool}/{mode} produced {out.shape}"
+
+
+def test_no_holdout_trains_on_everything_and_reports_final_epoch(tmp_path, monkeypatch):
+    """--val_fraction 0 matches the baselines' protocol: train on all objects.
+
+    With no held-out split there is nothing to select a checkpoint on, so the
+    honest report is the final epoch. at_best_val must be absent, not silently
+    filled with a test-selected number.
+    """
+    train_mod = _load_train_module()
+    train_points, train_labels = _synthetic(120, seed=1)
+    test_points, test_labels = _synthetic(45, seed=2)
+    monkeypatch.setattr(
+        train_mod, "load_split",
+        lambda d, s: (train_points, train_labels) if s == "train" else (test_points, test_labels),
+    )
+    monkeypatch.setattr(sys, "argv", [
+        "train_scanobjectnn.py", "--data_dir", "u", "--out", str(tmp_path),
+        "--config", "XS", "--epochs", "2", "--warmup_epochs", "1",
+        "--batch_size", "8", "--val_fraction", "0",
+    ])
+    train_mod.main()
+
+    metrics = json.load(open(tmp_path / "metrics.json"))
+    assert metrics["num_train"] == 120, "must train on every object"
+    assert metrics["num_val"] == 0
+    assert metrics["at_best_val"]["test_oa"] is None, "no val split => no val selection"
+    assert 0.0 <= metrics["final"]["test_oa"] <= 1.0
+    assert 0.0 <= metrics["test_curve_max"]["test_oa"] <= 1.0
+    assert not (tmp_path / "best_val.weights.h5").exists()
