@@ -26,6 +26,7 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from data.scanobjectnn import (  # noqa: E402
+    farthest_point_sample,
     NUM_CLASSES,
     NUM_POINTS,
     eval_subsample_indices,
@@ -129,6 +130,11 @@ def parse_args(argv=None):
         "--height_append", action=argparse.BooleanOptionalAction, default=None,
         help="append raw y height as a fourth per-point input feature",
     )
+    p.add_argument("--sampling", choices=["random", "fps"], default="random",
+                   help="point subsampling. fps matches PointNeXt: an FPS pool "
+                        "per training object with a random draw from it each "
+                        "epoch, and a fixed FPS subset at test.")
+    p.add_argument("--fps_pool", type=int, default=1200)
     p.add_argument("--gmp_scales", type=str, default=None,
                    help="comma-separated GMP voxel sizes run in parallel, "
                         "e.g. 0.0625,0.09375,0.125. Attention is worth ~1 OA "
@@ -165,6 +171,9 @@ def parse_args(argv=None):
     return args
 
 
+FPS_POOLS = {}
+
+
 def set_seeds(seed):
     random.seed(seed)
     np.random.seed(seed)
@@ -183,6 +192,18 @@ def git_sha():
         return "unknown"
 
 
+def build_fps_pools(points, size, label):
+    """One FPS pool per object. Depends only on the raw cloud, so it is
+    computed once at startup rather than per epoch (~48 ms each)."""
+    pools = []
+    started = time.time()
+    for i in range(points.shape[0]):
+        pools.append(farthest_point_sample(points[i], size, seed=i))
+    logging.info("built %d %s FPS pools of size %d in %.1fs",
+                 len(pools), label, size, time.time() - started)
+    return pools
+
+
 def make_train_epoch(points, labels, args, fixed_perm, epoch):
     """Materialize one epoch of resampled, augmented, ordered clouds.
 
@@ -197,7 +218,8 @@ def make_train_epoch(points, labels, args, fixed_perm, epoch):
     batch = np.stack(
         [prepare_train_sample(points[i], rng, args.ordering, fixed_perm,
                               height_append=args.height_append,
-                              height_mode=args.height_mode)
+                              height_mode=args.height_mode,
+                              fps_pool=(FPS_POOLS.get(i) if FPS_POOLS else None))
          for i in order]
     )
     one_hot = np.eye(NUM_CLASSES, dtype=np.float32)[labels[order]]
@@ -205,13 +227,21 @@ def make_train_epoch(points, labels, args, fixed_perm, epoch):
 
 
 def make_eval_arrays(points, labels, args, fixed_perm):
-    """Deterministic: fixed subsample indices, no augmentation, no voting."""
+    """Deterministic: fixed subsample indices, no augmentation, no voting.
+
+    With --sampling fps the subset is a cached farthest-point subset rather
+    than a fixed random one, matching PointNeXt's uniformly-sampled test
+    protocol. Still deterministic and still no voting.
+    """
     if points.shape[0] == 0:
         # --val_fraction 0 leaves no validation set at all.
         width = 6 if args.height_mode == "xyz_shifted" else (
             4 if args.height_append else 3)
         return np.empty((0, NUM_POINTS, width), np.float32), labels
-    subsample = eval_subsample_indices(points.shape[0], points.shape[1])
+    if args.sampling == "fps":
+        subsample = np.stack(build_fps_pools(points, NUM_POINTS, "eval"))
+    else:
+        subsample = eval_subsample_indices(points.shape[0], points.shape[1])
     prepared = np.stack(
         [
             prepare_eval_sample(points[i], subsample[i], args.ordering, fixed_perm,
@@ -467,6 +497,11 @@ def main():
         val_idx = np.empty(0, dtype=int)
     logging.info("train=%d val=%d test=%d", len(train_idx), len(val_idx),
                  len(test_labels))
+
+    if args.sampling == "fps":
+        global FPS_POOLS
+        FPS_POOLS = dict(enumerate(
+            build_fps_pools(train_points[train_idx], args.fps_pool, "train")))
 
     fixed_perm = fixed_random_order() if args.ordering == "random" else None
     epoch_points = train_points[train_idx]

@@ -106,6 +106,30 @@ def apply_order(points, ordering, fixed_perm=None):
     raise ValueError(f"unknown ordering: {ordering!r}")
 
 
+def farthest_point_sample(points, num_samples, seed=0):
+    """Farthest-point sampling: low-discrepancy coverage of the cloud.
+
+    PointNeXt attributes +3.5 OA on ScanObjectNN to "point resampling", and
+    their implementation is FPS-based -- FPS to 1200 then a random 1024 of
+    those at train time, and a cached FPS to 1024 at test time. We already do
+    per-epoch *uniform random* resampling; FPS is the half we never had.
+    Uniform random leaves clumps and holes, FPS does not.
+
+    O(num_samples x N) and vectorized over N, so ~1024x2048 is fine offline.
+    """
+    n = points.shape[0]
+    if num_samples >= n:
+        return np.arange(n)
+    chosen = np.empty(num_samples, dtype=np.int64)
+    chosen[0] = np.random.default_rng(seed).integers(n)
+    dist = np.full(n, np.inf, dtype=np.float32)
+    for i in range(1, num_samples):
+        last = points[chosen[i - 1]]
+        dist = np.minimum(dist, ((points - last) ** 2).sum(axis=-1))
+        chosen[i] = int(dist.argmax())
+    return chosen
+
+
 # --------------------------------------------------------------------------
 # Sample-level composition
 # --------------------------------------------------------------------------
@@ -160,9 +184,15 @@ def _height_feature(raw_height, augmented_points, scale, mode, raw_xyz=None):
 
 def prepare_train_sample(raw_points, rng, ordering, fixed_perm=None,
                          num_points=NUM_POINTS, height_append=False,
-                         height_mode="raw"):
+                         height_mode="raw", fps_pool=None):
     """Resample -> normalize -> augment -> order. raw_points: [2048, 3]."""
-    idx = rng.choice(raw_points.shape[0], size=num_points, replace=False)
+    if fps_pool is not None:
+        # PointNeXt: FPS to a pool (1200), then a random num_points of those.
+        # The pool is precomputed once per object since it depends only on the
+        # raw cloud; the per-epoch randomness comes from the second draw.
+        idx = fps_pool[rng.choice(len(fps_pool), size=num_points, replace=False)]
+    else:
+        idx = rng.choice(raw_points.shape[0], size=num_points, replace=False)
     selected = raw_points[idx].astype(np.float32)
     # PointNeXt height is the raw gravity-axis measurement.  Capture it before
     # centering/unit-sphere normalization removes absolute height and scale.
