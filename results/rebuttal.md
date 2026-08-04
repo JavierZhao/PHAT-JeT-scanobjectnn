@@ -44,6 +44,46 @@ numbers use the same checkpoint-selection convention as the published
 baselines; under the stricter convention of selecting on a held-out split of
 the training set, PHAT-JeT-S scores 81.45 ± 0.53.
 
+## Architectural novelty (reviewers rHHc, VQ3F)
+
+The concern is that patch-hierarchical attention is close to Swin, Longformer
+and related point-cloud methods, so the contribution reads as domain adaptation.
+We disagree, and the ScanObjectNN results are our evidence.
+
+**What is new is the factorization, not the patching.** PHAT-JeT separates three
+things that existing patched architectures bind together: exact pairwise
+interactions are preserved *within* patches, global context is restored through
+a small number of patch tokens, and geometry is supplied *independently* of
+both, by GMP. The consequence is that patch membership carries no geometric
+duty. Swin requires regular spatial windows; Longformer requires sequence
+neighbourhoods that are semantically meaningful; Point Transformer V3 requires a
+space-filling serialization so that adjacent tokens are spatially adjacent.
+PHAT-JeT requires none of these, because the geometry has been factored out into
+a separate pathway.
+
+**This is a testable claim, and it holds in both domains.** In jet tagging,
+performance is equivalent under kT, pT, Morton and fixed-random orderings. We
+find the same on ScanObjectNN: replacing Morton ordering — which makes patches
+spatially coherent — with a *fixed random* permutation, which destroys spatial
+coherence entirely, costs **0.64 points (77.02 → 76.38, within one standard
+deviation over three seeds)**. Patches can be arbitrary as long as they are
+consistent. That result is not available to an architecture whose windows must
+be spatial.
+
+Decoupling computational sparsity from geometric inductive bias is what makes
+the fixed-latency hardware mapping possible: patch boundaries are static,
+requiring no sorting, no serialization and no neighbour search at inference.
+That is a property of the factorization, not of the patching mechanism it shares
+with prior work.
+
+**The ScanObjectNN result shows the factorization is not tuned to detector
+geometry.** Transferring it to scanned indoor furniture — a domain with
+different dimensionality, sampling, noise characteristics and class semantics —
+required no architectural change beyond extending GMP's grid from 2D to 3D, and
+yields a model competitive with purpose-built point-cloud architectures at a
+fraction of their cost. A design that was merely Swin-style patching
+adapted to jets would not be expected to transfer in this way.
+
 ## What this shows
 
 **PHAT-JeT transfers to real-world 3D point clouds without architectural
@@ -58,6 +98,15 @@ for microsecond-latency trigger hardware, and that design constraint carries
 over: the 0.157M-parameter configuration already reaches 81.2% at 0.23 GFLOPs
 — 13 points above PointNet with 22× fewer parameters and a quarter of the
 compute, and within 1.1 points of our own 4× larger model.
+
+The regime itself is what makes this significant beyond jet tagging. The LHC
+Level-1 trigger is among the most stringent real-time ML environments in
+existence: it receives collisions at 40 MHz — one bunch crossing every 25 ns —
+and must sustain that rate while deciding within microsecond-scale latency on a
+fixed hardware budget. An architecture that is effective under those constraints
+offers transferable lessons for efficient ML on scientific instruments and other
+extreme-edge systems, and it directly affects thousands of LHC scientists by
+determining which collision events survive for analysis.
 
 Two of the strongest published methods, PointMLP and PointNeXt, remain ahead in
 absolute accuracy. We do not claim state of the art. What the benchmark
