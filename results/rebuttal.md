@@ -84,6 +84,91 @@ yields a model competitive with purpose-built point-cloud architectures at a
 fraction of their cost. A design that was merely Swin-style patching
 adapted to jets would not be expected to transfer in this way.
 
+## Robustness and deployment limitations (reviewer VQ3F)
+
+The ScanObjectNN study lets us answer two of these three concerns with new
+measurements in a second domain, and lets us bound the third more honestly.
+
+### Ordering dependence
+
+PHAT-JeT requires a *consistent* ordering, not a *meaningful* one, and the cost
+of the ordering choice is small. On ScanObjectNN we compared Morton ordering —
+which makes each patch spatially compact — against a **fixed random
+permutation**, which destroys spatial structure entirely. The difference is
+**0.64 points (77.02 ± 0.80 vs 76.38 ± 0.51, three seeds)**, within one standard
+deviation. This replicates in a second domain the equivalence we report across
+kT, pT, Morton and random orderings for jets.
+
+We agree the model is not permutation-*invariant*: train and test must use the
+same ordering, and a mismatch does degrade performance. But the deployment
+requirement this imposes is only determinism, which the CMS Level-1 pipeline
+already satisfies — particles arrive in descending pT order within the detector,
+so PHAT-JeT consumes an ordering already present in the data path and adds no
+real-time sort. The GMP module itself is permutation-equivariant and is modular
+across attention mechanisms (Table 7); we selected the hierarchical
+configuration because it was best in matched-budget architecture and
+attention-block scans, including against full self-attention.
+
+### Sensitivity to geometric discretization
+
+We want to be more direct than our original text: **the grid spacing is a
+genuine calibration parameter, and it matters.** Transferring to ScanObjectNN
+required re-calibrating it, and the sweep spans a wide range — from 59.6 at
+δ=0.5 to 77.0 at δ=0.09375 on that dataset.
+
+What the data support is not insensitivity but a **broad optimum**. Across a
+**4× range of grid spacing (δ = 0.03125 to 0.125) accuracy varies by 2.7 points
+(74.4–77.0)**, degrading only outside it. The jet results show the same shape:
+performance is stable for δ = 0.1–0.2, and moving from the default δ = 0.2 to a
+coarser δ = 0.3 costs 0.10 points of accuracy and 2.1 points of average
+background rejection (Appendix G, Table 14).
+
+The practical implication is that δ should be treated like detector granularity
+— set once per detector, jet definition or sensor, by a one-dimensional scan —
+rather than as a hyperparameter needing continual retuning. We will state this
+explicitly as a deployment requirement rather than presenting the grid as
+tuning-free.
+
+### Evaluation beyond simulation
+
+Simulation is necessary for jet tagging because many target signals are
+extremely rare and collision data do not carry the complete per-event labels
+supervised training requires. Training on Monte Carlo and then validating and
+calibrating on experimental control samples is standard LHC practice, and the
+HLS4ML benchmark includes detector-response smearing approximating the CMS
+setting.
+
+The ScanObjectNN evaluation addresses a distinct part of this concern: it is
+**real sensor data, not simulation** — scanned indoor scenes carrying genuine
+occlusion, background clutter, sensor noise and non-uniform sampling. The
+architecture reaching 82.3% there, competitive with purpose-built point-cloud
+methods, shows its performance does not depend on artefacts of physics
+simulation.
+
+We are careful not to overstate this. It does **not** establish robustness to
+the specific simulation-to-data shift in jet tagging. Before deployment the
+model would still require validation on experimental control regions,
+calibration, and systematic studies with alternative generators and detector
+simulations; simulation-to-data reweighting and domain adaptation are natural
+extensions. We will state this limitation and the required validation programme
+explicitly.
+
+### Potential information loss from pooling
+
+Pooling is not on the critical path for fine-grained particle information.
+Per-particle features undergo exact local attention *before* patch pooling, and
+the global-stage output is broadcast back and added residually to the
+particle-level stream. Pooling therefore bounds only what reaches the global
+communication stage; it does not replace the particle representations the
+network uses.
+
+Appendix I compares mean, learned, flatten+dense and max pooling: mean and
+learned are nearly identical, while flatten+dense and max are worse. The
+ScanObjectNN results independently support this — mean, max and concatenated
+max+mean readouts all fall within seed noise of one another. The mean-pooled
+token evidently carries what inter-patch communication needs, while the
+uncompressed local path retains constituent-level structure.
+
 ## What this shows
 
 **PHAT-JeT transfers to real-world 3D point clouds without architectural
