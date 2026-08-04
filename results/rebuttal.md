@@ -65,8 +65,8 @@ a separate pathway.
 performance is equivalent under kT, pT, Morton and fixed-random orderings. We
 find the same on ScanObjectNN: replacing Morton ordering — which makes patches
 spatially coherent — with a *fixed random* permutation, which destroys spatial
-coherence entirely, leaves accuracy **statistically indistinguishable over three
-seeds**. Patches can be arbitrary as long as they are consistent. That result is not available to an architecture whose windows must
+coherence entirely, leaves accuracy **statistically indistinguishable** (table below).
+Patches can be arbitrary as long as they are consistent. That result is not available to an architecture whose windows must
 be spatial.
 
 Decoupling computational sparsity from geometric inductive bias is what makes
@@ -91,9 +91,26 @@ and a train/test mismatch does degrade it — but the choice of ordering costs
 little, and the CMS Level-1 pipeline already delivers descending-pT order, so no
 real-time sort is added. On ScanObjectNN, replacing spatially compact Morton
 ordering with a fixed random permutation — which destroys spatial coherence
-entirely — leaves accuracy **statistically indistinguishable** over three seeds,
-replicating in a second domain the equivalence we report across kT, pT, Morton
-and random orderings for jets. **Grid resolution:**
+entirely — leaves accuracy statistically indistinguishable, replicating in a
+second domain the equivalence we report across kT, pT, Morton and random
+orderings for jets:
+
+| Point ordering | OA (%) | mAcc (%) |
+|---|---|---|
+| Morton (spatially compact patches) | 77.02 ± 0.80 | 73.01 ± 1.02 |
+| Fixed random (spatial coherence destroyed) | 76.38 ± 0.51 | 72.66 ± 0.44 |
+
+*Three seeds each. These numbers are lower than the 82.3% headline because the
+ablation is deliberately run on a different configuration: the pre-registered
+ordering study uses the mid-size model with coordinates-only input, so that
+ordering is the only variable, whereas the reported result uses the smaller
+configuration with absolute-offset input features. The 0.64-point difference is
+smaller than the seed-to-seed spread of the Morton arm itself (± 0.80), so the
+two orderings are not separable at this sample size — which is the claim being
+made. We did not re-run the ablation on the best configuration, and do not
+extrapolate the absolute values to it.*
+
+**Grid resolution:**
 δ is a genuine calibration parameter, not a tuning-free choice, but its optimum
 is broad — accuracy varies by 2.7 points across a 4× range of spacing
 (δ = 0.03125–0.125) on ScanObjectNN, and by 0.10 points between δ = 0.2 and 0.3
