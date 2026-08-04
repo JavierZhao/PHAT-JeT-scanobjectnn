@@ -1,7 +1,7 @@
 # Generality beyond high-energy physics: PHAT-JeT on ScanObjectNN
 
 Reviewers asked for evidence that PHAT-JeT's design generalizes beyond jet
-tagging. We therefore evaluated it on **ScanObjectNN PB_T50_RS**, the hardest
+tagging. We therefore evaluated it on **ScanObjectNN PB_T50_RS** [1], the hardest
 variant of the standard real-world 3D point-cloud classification benchmark
 (15 classes, 11,416 training / 2,882 test objects of scanned indoor furniture
 with background clutter, occlusion and rotation).
@@ -22,20 +22,24 @@ more seeds.
 
 | Method | Params | GFLOPs | OA (%) | mAcc (%) |
 |---|---|---|---|---|
-| PointNet | 3.5M | 0.9 | 68.2 | 63.4 |
-| PointNet++ | 1.5M | 1.7 | 77.9 | 75.4 |
-| DGCNN | 1.8M | 4.8 | 78.1 | 73.6 |
-| PointCNN | 0.6M | — | 78.5 | 75.1 |
-| BGA-DGCNN | — | — | 79.7 | 75.7 |
-| SimpleView | 0.8M | — | 80.5 ± 0.3 | — |
+| PointNet [2] | 3.5M | 0.9 | 68.2 | 63.4 |
+| PointNet++ [3] | 1.5M | 1.7 | 77.9 | 75.4 |
+| DGCNN [4] | 1.8M | 4.8 | 78.1 | 73.6 |
+| PointCNN [5] | 0.6M | — | 78.5 | 75.1 |
+| BGA-DGCNN [1] | — | — | 79.7 | 75.7 |
+| SimpleView [6] | 0.8M | — | 80.5 ± 0.3 | — |
 | **PHAT-JeT-XS (ours)** | **0.157M** | **0.23** | **81.22 ± 0.16** | **77.43** |
 | **PHAT-JeT-S (ours)** | **0.612M** | **0.90** | **82.29 ± 0.41** | **78.12** |
-| MVTN | 3.5M | 1.8 | 82.8 | — |
-| PointMLP-elite | 0.68M | — | 83.8 ± 0.6 | 81.8 ± 0.8 |
-| PointMLP | 13.2M | 31.3 | 85.4 ± 1.3 | 83.9 ± 1.5 |
-| PointNeXt-S | 1.4M | 1.6 | 87.7 ± 0.4 | 85.8 ± 0.6 |
+| MVTN [7] | 3.5M | 1.8 | 82.8 | — |
+| PointMLP-elite [8] | 0.68M | — | 83.8 ± 0.6 | 81.8 ± 0.8 |
+| PointMLP [8] | 13.2M | 31.3 | 85.4 ± 1.3 | 83.9 ± 1.5 |
+| PointNeXt-S [9] | 1.4M | 1.6 | 87.7 ± 0.4 | 85.8 ± 0.6 |
 
-Baseline figures are taken from the original papers. For comparability, our
+Baseline figures are taken from the original papers; where a method is
+tabulated in more than one source we cite the table we read (PointNet,
+PointNet++, DGCNN, PointCNN, SimpleView, MVTN and PointMLP from [9];
+PointMLP-elite from [8]; BGA-DGCNN from [1]). Like PointMLP and PointNeXt we
+use no test-time voting. For comparability, our
 numbers use the same checkpoint-selection convention as the published
 baselines; under the stricter convention of selecting on a held-out split of
 the training set, PHAT-JeT-S scores 81.45 ± 0.53.
@@ -63,3 +67,37 @@ patch-hierarchical attention — are not specific to detector geometry or to
 high-energy physics. They are competitive with purpose-built point-cloud
 architectures on scanned real-world objects, in the parameter and compute
 regime where PHAT-JeT is intended to operate.
+
+## References
+
+[1] M. A. Uy, Q.-H. Pham, B.-S. Hua, D. T. Nguyen, S.-K. Yeung. *Revisiting
+Point Cloud Classification: A New Benchmark Dataset and Classification Model on
+Real-World Data.* ICCV 2019. arXiv:1908.04616
+
+[2] C. R. Qi, H. Su, K. Mo, L. J. Guibas. *PointNet: Deep Learning on Point Sets
+for 3D Classification and Segmentation.* CVPR 2017. arXiv:1612.00593
+
+[3] C. R. Qi, L. Yi, H. Su, L. J. Guibas. *PointNet++: Deep Hierarchical Feature
+Learning on Point Sets in a Metric Space.* NeurIPS 2017. arXiv:1706.02413
+
+[4] Y. Wang, Y. Sun, Z. Liu, S. E. Sarma, M. M. Bronstein, J. M. Solomon.
+*Dynamic Graph CNN for Learning on Point Clouds.* ACM Transactions on Graphics
+2019. arXiv:1801.07829
+
+[5] Y. Li, R. Bu, M. Sun, W. Wu, X. Di, B. Chen. *PointCNN: Convolution on
+X-Transformed Points.* NeurIPS 2018. arXiv:1801.07791
+
+[6] A. Goyal, H. Law, B. Liu, A. Newell, J. Deng. *Revisiting Point Cloud Shape
+Classification with a Simple and Effective Baseline.* ICML 2021.
+arXiv:2106.05304
+
+[7] A. Hamdi, S. Giancola, B. Ghanem. *MVTN: Multi-View Transformation Network
+for 3D Shape Recognition.* ICCV 2021. arXiv:2011.13244
+
+[8] X. Ma, C. Qin, H. You, H. Ran, Y. Fu. *Rethinking Network Design and Local
+Geometry in Point Cloud: A Simple Residual MLP Framework.* ICLR 2022.
+arXiv:2202.07123
+
+[9] G. Qian, Y. Li, H. Peng, J. Mai, H. A. A. K. Hammoud, M. Elhoseiny,
+B. Ghanem. *PointNeXt: Revisiting PointNet++ with Improved Training and Scaling
+Strategies.* NeurIPS 2022. arXiv:2206.04670
