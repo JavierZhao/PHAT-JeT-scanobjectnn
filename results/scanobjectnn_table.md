@@ -422,15 +422,22 @@ Config S, δ\*, xyz_shifted input, against that arm's 82.29 ± 0.41 (matched).
 | arm | n | matched OA | strict OA | verdict |
 |---|---|---|---|---|
 | xyz_shifted (reference) | 4 | 82.29 ± 0.41 | 81.45 ± 0.53 | — |
-| **FPS point sampling** | 3 | **82.27 ± 0.64** | **81.62 ± 0.51** | ties on matched, **best on strict** |
+| FPS point sampling (n=8) | 8 | 82.15 ± 0.52 | 81.55 ± 0.52 | **ties — not a gain** |
 | concat(max, mean) readout | 3 | 81.23 ± 0.19 | 81.04 ± 0.20 | null |
 | sub-voxel position | 2 | 81.26 ± 0.10 | 80.86 ± 0.19 | null (2 seeds) |
 
-**FPS has the highest strict score of any configuration (81.62 ± 0.51)** and
-ties the reference on the matched protocol. Its final-epoch score is also the
-highest recorded (82.12 ± 0.60 vs 81.70), i.e. it is the most stable at
-convergence rather than peaking early — consistent with better surface coverage
-producing a better-conditioned problem rather than a luckier maximum.
+**FPS ties the reference and is not a gain.** At n=3 it looked like the best
+configuration found (81.62 strict vs 81.45); extended to **n=8** it settles at
+81.55 ± 0.52 strict and 82.15 ± 0.52 matched — statistically identical to
+xyz_shifted alone (81.45 ± 0.53 / 82.29 ± 0.41).
+
+This is the third time in this campaign an arm looked positive at 2–3 seeds and
+regressed to the reference once seeded properly. On this benchmark, with a
+per-arm σ near 0.5, **no difference below roughly 1 point is a result at n≤4**.
+PointMLP's own published σ is ±1.3, which says the same thing.
+
+Its final-epoch score remains marginally higher (81.91 vs 81.70), so the "more
+stable at convergence" reading survives weakly, but not as an accuracy claim.
 
 The other two research leads are null. Notably, **radius-normalized sub-voxel
 position did not help** despite a well-argued mechanism (PointNeXt reports +0.3
